@@ -602,14 +602,17 @@ function renderInventory(){
   const inStock = records.filter(r=>statusOf(r)==='instock');
   const totalPalletsInStock = inStock.reduce((s,r)=>s+(Number(r.pallets)||0),0);
   const skuCount = new Set(inStock.map(r=>r.sku)).size;
-  const alertCount = records.filter(r=>isAbnormal(r)).length;
+  const totalInboundPallets = records.reduce((s,r)=>s+(Number(r.pallets)||0),0);
+  const abnormalPallets = records.filter(r=>isAbnormal(r)).reduce((s,r)=>s+(Number(r.pallets)||0),0);
+  const shippedPallets = records.filter(r=>statusOf(r)==='shipped').reduce((s,r)=>s+(Number(r.pallets)||0),0);
 
   return `
   <div class="stat-row">
     <div class="stat-card"><div class="label">在庫棧板數</div><div class="value accent">${totalPalletsInStock}</div></div>
     <div class="stat-card"><div class="label">在庫 SKU 種類</div><div class="value">${skuCount}</div></div>
-    <div class="stat-card"><div class="label">總筆數</div><div class="value">${records.length}</div></div>
-    <div class="stat-card"><div class="label">異常筆數</div><div class="value ${alertCount?'warn':''}">${alertCount}</div></div>
+    <div class="stat-card"><div class="label">總進貨棧板數</div><div class="value">${totalInboundPallets}</div></div>
+    <div class="stat-card"><div class="label">已出貨棧板數</div><div class="value">${shippedPallets}</div></div>
+    <div class="stat-card"><div class="label">異常板數</div><div class="value ${abnormalPallets?'warn':''}">${abnormalPallets}</div></div>
   </div>
 
   <div class="toolbar">

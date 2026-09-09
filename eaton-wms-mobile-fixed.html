@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Eaton 蘆竹 UPS 倉儲管理系統</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- xlsx-js-style is API-compatible with SheetJS and preserves Excel cell styles on export. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -795,15 +796,46 @@ function handleImportFile(file){
 }
 
 function exportInventory(){
-  const data = filteredRecords().map(r=>({
-    '進倉日期':r.inboundDate, 'SKU物料':r.sku, '數量':r.qty, '棧板數':r.pallets,
-    '儲位':r.location, '櫃號':r.containerNo, '出貨日期':r.outboundDate||'', '備註':r.note,
-    '狀態': (statusOf(r)==='instock'?'在庫':'已出貨') + (isAbnormal(r)?'／異常':'')
-  }));
-  const ws = XLSX.utils.json_to_sheet(data);
+  const rows = filteredRecords();
+  const reportMonth = displayDate(toISO(new Date())).slice(0,7);
+  const data = [
+    [null,null,`EATON 蘆竹 UPS Inventory Report       ${reportMonth}`,null,null,null,null,null],
+    ['Inbound\n Date','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound \nDate','備註'],
+    ...rows.map(r=>[
+      parseISO(r.inboundDate)||'', Number(r.qty)||0, Number(r.pallets)||0, r.sku||'', r.location||'', r.containerNo||'',
+      r.outboundDate ? (parseISO(r.outboundDate)||'') : '', r.note||''
+    ])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const black = {rgb:'000000'};
+  const border = {top:{style:'thin',color:black},bottom:{style:'thin',color:black},left:{style:'thin',color:black},right:{style:'thin',color:black}};
+  const titleStyle = {font:{name:'Calibri',sz:20,bold:true},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'thin',color:black}}};
+  const headerStyle = {font:{name:'Calibri',sz:15,bold:true},alignment:{horizontal:'center',vertical:'center',wrapText:true},border};
+  const dataStyle = {font:{name:'Calibri',sz:15},alignment:{horizontal:'center',vertical:'center'},border};
+  const shippedStyle = {font:{name:'Calibri',sz:15},alignment:{horizontal:'center',vertical:'center'},border,fill:{patternType:'solid',fgColor:{rgb:'D9E1F2'}}};
+  ws['!merges'] = [XLSX.utils.decode_range('C1:G1')];
+  ws['!cols'] = [{wch:17.5},{wch:17.2},{wch:10.7},{wch:30.7},{wch:15.7},{wch:20.7},{wch:15.7},{wch:35.2}];
+  ws['!rows'] = [{hpt:70},{hpt:45.25},...rows.map(()=>({hpt:20}))];
+  ws['!freeze'] = {xSplit:0,ySplit:2,topLeftCell:'A3',activePane:'bottomLeft',state:'frozen'};
+  for(let c=0;c<8;c++){
+    const titleCell = ws[XLSX.utils.encode_cell({r:0,c})];
+    if(titleCell) titleCell.s = titleStyle;
+    const headerCell = ws[XLSX.utils.encode_cell({r:1,c})];
+    if(headerCell) headerCell.s = headerStyle;
+  }
+  rows.forEach((record,index)=>{
+    const style = statusOf(record)==='shipped' ? shippedStyle : dataStyle;
+    for(let c=0;c<8;c++){
+      const cell = ws[XLSX.utils.encode_cell({r:index+2,c})];
+      if(cell){
+        cell.s = style;
+        if(c===0 || c===6) cell.z = 'yyyy/mm/dd';
+      }
+    }
+  });
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '庫存報表');
-  XLSX.writeFile(wb, `Eaton蘆竹UPS_庫存報表_${toISO(new Date())}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+  XLSX.writeFile(wb, `EATON - Inventory Report_蘆竹倉.xlsx`, {cellStyles:true});
 }
 
 /* =========================================================

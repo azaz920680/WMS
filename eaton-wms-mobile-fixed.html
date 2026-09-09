@@ -206,6 +206,8 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;}
 .putaway-confirm .confirm-actions{display:flex;flex-direction:row;flex-wrap:nowrap;gap:12px;margin-top:26px;}
 .putaway-confirm .confirm-actions button{flex:1;font-size:17px;padding:12px 10px;}
 .done-banner{background:var(--success-bg);color:var(--success);border-radius:12px;padding:22px;text-align:center;font-size:15px;font-weight:600;margin-bottom:18px;}
+.putaway-ready-banner{font-size:18px;line-height:1.8;}
+.putaway-ready-banner .btn{font-size:16px;padding:11px 24px;margin-top:4px;}
 .pallet-cards{display:grid;gap:8px;}
 .pallet-card{
   background:var(--surface);border:1px solid var(--border);border-radius:10px;
@@ -892,8 +894,11 @@ function renderPutawayScan(){
     ${openBatches.map(b=>`<option value="${b.batchId}" ${b.batchId===currentBatchId?'selected':''}>${esc(b.batchDate)}（已上架 ${b.done}/${b.total}）</option>`).join('')}
   </select>`;
 
-  const currentHtml = pendingItems.length===0 ? `<div class="done-banner">🎉 本批次共 ${batch.total} 板已全部上架完成</div>` : !current ? `
-    <div class="done-banner">已掃描 ${scannedCount} / ${pendingItems.length} 板，請確認後一次完成上架。<br><button class="btn btn-primary" id="btn-finalize-putaway">確認上架</button></div>
+  const allPendingScanned = pendingItems.length>0 && scannedCount===pendingItems.length;
+  const currentHtml = pendingItems.length===0 ? `<div class="done-banner">🎉 本批次共 ${batch.total} 板已全部上架完成</div>` : allPendingScanned ? `
+    <div class="done-banner putaway-ready-banner">已掃描 ${scannedCount} / ${pendingItems.length} 板，請確認後一次完成上架。<br><button class="btn btn-primary" id="btn-finalize-putaway">確認上架</button></div>
+  ` : !current ? `
+    <div class="done-banner putaway-ready-banner">已掃描 ${scannedCount} / ${pendingItems.length} 板，請確認後一次完成上架。<br><button class="btn btn-primary" id="btn-finalize-putaway">確認上架</button></div>
   ` : `
     <div class="current-card">
       <div class="meta">目前作業　棧板 <b>No.${current.seq}</b> ／ 共 ${batch.total} 板（已暫存 ${scannedCount}/${pendingItems.length} 板）</div>
@@ -1141,11 +1146,22 @@ function currentPendingPutawayItem(){
   return current || null;
 }
 
+function normalizeLocationCode(value){
+  return String(value||'').trim().toUpperCase();
+}
+
+function isValidLocationCode(value){
+  // 格式：兩個英文字母 + 兩位數字 + 一個大寫英文字母 + 一位數字，例如 AW00A1。
+  return /^[A-Z]{2}\d{2}[A-Z]\d$/.test(value);
+}
+
 function stagePutaway(locationVal, abnormalVal){
   const current = currentPendingPutawayItem();
   if(!current) return;
-  if(!locationVal || !locationVal.trim()){ showToast('請輸入或掃描儲位'); return; }
-  putawayScanDraft[current.id] = {location:locationVal.trim(),abnormalText:(abnormalVal||'').trim()};
+  const location = normalizeLocationCode(locationVal);
+  if(!location){ showToast('請輸入或掃描儲位'); return; }
+  if(!isValidLocationCode(location)){ showToast('儲位格式錯誤，請使用例如 AW00A1 或 BE12B2'); return; }
+  putawayScanDraft[current.id] = {location,abnormalText:(abnormalVal||'').trim()};
   savePutawayScanDraft();
   currentItemId = null;
   render();
@@ -1156,11 +1172,14 @@ async function finalizePutawayBatch(){
   const batch = batchesFromItems().find(b=>b.batchId===currentBatchId);
   if(!batch) return;
   const pending = batch.items.filter(i=>i.status==='pending');
-  const missing = pending.find(i=>!(putawayScanDraft[i.id]?.location || i.location));
-  if(missing){
-    currentItemId = missing.id;
+  const invalidItem = pending.find(i=>{
+    const location = normalizeLocationCode(putawayScanDraft[i.id]?.location || i.location);
+    return !isValidLocationCode(location);
+  });
+  if(invalidItem){
+    currentItemId = invalidItem.id;
     render();
-    showToast(`請先掃描 No.${missing.seq} 的儲位`);
+    showToast(`請確認 No.${invalidItem.seq} 的儲位格式，例如 AW00A1`);
     return;
   }
   document.body.insertAdjacentHTML('beforeend',`
@@ -1185,7 +1204,7 @@ async function commitPutawayBatch(batchId){
   const pending = batch.items.filter(i=>i.status==='pending');
   pending.forEach(item=>{
     const staged = putawayScanDraft[item.id]||{};
-    item.location = staged.location || item.location;
+    item.location = normalizeLocationCode(staged.location || item.location);
     item.abnormalText = staged.abnormalText ?? item.abnormalText;
     item.status = 'done';
     syncInventoryForItem(item);
@@ -1202,6 +1221,15 @@ async function commitPutawayBatch(batchId){
 function stagePalletField(itemId, field, value){
   const item = putawayItems.find(i=>i.id===itemId);
   if(!item) return;
+  if(field==='location'){
+    const location = normalizeLocationCode(value);
+    if(location && !isValidLocationCode(location)){
+      showToast('儲位格式錯誤，請使用例如 AW00A1 或 BE12B2');
+      render();
+      return;
+    }
+    value = location;
+  }
   const staged = putawayScanDraft[itemId]||{};
   putawayScanDraft[itemId] = {...staged,[field]:value};
   savePutawayScanDraft();

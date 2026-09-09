@@ -6,6 +6,7 @@
 <title>Eaton 蘆竹 UPS 倉儲管理系統</title>
 <!-- xlsx-js-style is API-compatible with SheetJS and preserves Excel cell styles on export. -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -795,47 +796,78 @@ function handleImportFile(file){
   reader.readAsArrayBuffer(file);
 }
 
-function exportInventory(){
+async function exportInventory(){
   const rows = filteredRecords();
   const reportMonth = displayDate(toISO(new Date())).slice(0,7);
-  const data = [
-    [null,null,`EATON 蘆竹 UPS Inventory Report       ${reportMonth}`,null,null,null,null,null],
-    ['Inbound\n Date','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound \nDate','備註'],
-    ...rows.map(r=>[
-      parseISO(r.inboundDate)||'', Number(r.qty)||0, Number(r.pallets)||0, r.sku||'', r.location||'', r.containerNo||'',
-      r.outboundDate ? (parseISO(r.outboundDate)||'') : '', r.note||''
-    ])
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  const black = {rgb:'000000'};
-  const border = {top:{style:'thin',color:black},bottom:{style:'thin',color:black},left:{style:'thin',color:black},right:{style:'thin',color:black}};
-  const titleStyle = {font:{name:'Calibri',sz:20,bold:true},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'thin',color:black}}};
-  const headerStyle = {font:{name:'Calibri',sz:15,bold:true},alignment:{horizontal:'center',vertical:'center',wrapText:true},border};
-  const dataStyle = {font:{name:'Calibri',sz:15},alignment:{horizontal:'center',vertical:'center'},border};
-  const shippedStyle = {font:{name:'Calibri',sz:15},alignment:{horizontal:'center',vertical:'center'},border,fill:{patternType:'solid',fgColor:{rgb:'D9E1F2'}}};
-  ws['!merges'] = [XLSX.utils.decode_range('C1:G1')];
-  ws['!cols'] = [{wch:17.5},{wch:17.2},{wch:10.7},{wch:30.7},{wch:15.7},{wch:20.7},{wch:15.7},{wch:35.2}];
-  ws['!rows'] = [{hpt:70},{hpt:45.25},...rows.map(()=>({hpt:20}))];
-  ws['!freeze'] = {xSplit:0,ySplit:2,topLeftCell:'A3',activePane:'bottomLeft',state:'frozen'};
-  for(let c=0;c<8;c++){
-    const titleCell = ws[XLSX.utils.encode_cell({r:0,c})];
-    if(titleCell) titleCell.s = titleStyle;
-    const headerCell = ws[XLSX.utils.encode_cell({r:1,c})];
-    if(headerCell) headerCell.s = headerStyle;
+  if(typeof ExcelJS==='undefined'){
+    showToast('Excel 匯出元件尚未載入，請確認網路後重試');
+    return;
   }
-  rows.forEach((record,index)=>{
-    const style = statusOf(record)==='shipped' ? shippedStyle : dataStyle;
-    for(let c=0;c<8;c++){
-      const cell = ws[XLSX.utils.encode_cell({r:index+2,c})];
-      if(cell){
-        cell.s = style;
-        if(c===0 || c===6) cell.z = 'yyyy/mm/dd';
-      }
-    }
+  const workbook = new ExcelJS.Workbook();
+  const ws = workbook.addWorksheet('Inventory', {views:[{state:'frozen',ySplit:2}]});
+  ws.columns = [
+    {width:17.5},{width:17.2},{width:10.7},{width:30.7},
+    {width:15.7},{width:20.7},{width:15.7},{width:35.2}
+  ];
+  const thinBlack = {style:'thin',color:{argb:'FF000000'}};
+  const allBorders = {top:thinBlack,bottom:thinBlack,left:thinBlack,right:thinBlack};
+  const titleColor = 'FF2F5597';
+  const headerFill = 'FFB4C7E2';
+  const shippedFill = 'FFD9E1F2';
+  ws.getRow(1).height = 70;
+  ws.getRow(2).height = 45.25;
+  ws.mergeCells('C1:G1');
+  ws.getCell('C1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}`;
+  ws.getCell('C1').font = {name:'Calibri',size:20,bold:true,color:{argb:titleColor}};
+  ws.getCell('C1').alignment = {horizontal:'center',vertical:'middle'};
+  const logoId = workbook.addImage({base64:COMPANY_LOGO,extension:'png'});
+  ws.addImage(logoId, {tl:{col:0.15,row:0.12},br:{col:1.55,row:0.9}});
+  const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound\nDate','備註'];
+  headers.forEach((label,index)=>{
+    const cell = ws.getCell(2,index+1);
+    cell.value = label;
+    cell.font = {name:'Calibri',size:15,bold:true,color:{argb:'FF000000'}};
+    cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:headerFill}};
+    cell.alignment = {horizontal:'center',vertical:'middle',wrapText:true};
+    cell.border = allBorders;
   });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
-  XLSX.writeFile(wb, `EATON - Inventory Report_蘆竹倉.xlsx`, {cellStyles:true});
+  rows.forEach((record,index)=>{
+    const rowNumber = index+3;
+    const row = ws.getRow(rowNumber);
+    row.height = 20;
+    row.values = [
+      null,
+      parseISO(record.inboundDate)||null,
+      Number(record.qty)||0,
+      Number(record.pallets)||0,
+      record.sku||'',record.location||'',record.containerNo||'',
+      record.outboundDate ? (parseISO(record.outboundDate)||null) : null,
+      record.note||''
+    ];
+    const isShipped = statusOf(record)==='shipped';
+    for(let col=1;col<=8;col++){
+      const cell = ws.getCell(rowNumber,col);
+      cell.font = {name:'Calibri',size:15,color:{argb:'FF000000'}};
+      cell.alignment = {horizontal:'center',vertical:'middle'};
+      cell.border = allBorders;
+      if(isShipped) cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:shippedFill}};
+    }
+    ws.getCell(rowNumber,1).numFmt = 'yyyy/mm/dd';
+    ws.getCell(rowNumber,2).numFmt = '#,##0';
+    ws.getCell(rowNumber,3).numFmt = '#,##0';
+    ws.getCell(rowNumber,7).numFmt = 'yyyy/mm/dd';
+  });
+  ws.autoFilter = {from:'A2',to:`H${Math.max(2,rows.length+2)}`};
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'EATON - Inventory Report_蘆竹倉.xlsx';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 /* =========================================================

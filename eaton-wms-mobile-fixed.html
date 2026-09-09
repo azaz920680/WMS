@@ -87,7 +87,7 @@ main{flex:1;padding:20px 24px 60px;max-width:1400px;width:100%;margin:0 auto;}
   padding:14px 18px;min-width:150px;flex:1;
 }
 .stat-card .label{font-size:12px;color:var(--ink-soft);margin-bottom:6px;}
-.stat-card .value{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink);}
+.stat-card .value{font-family:var(--sans);font-variant-numeric:normal;font-feature-settings:'zero' 0;font-size:22px;font-weight:600;color:var(--ink);}
 .stat-card .value.accent{color:var(--accent);}
 .stat-card .value.warn{color:var(--warning);}
 
@@ -130,8 +130,8 @@ tr.row-shipped:hover td{background:#E7E9EC;}
 .badge-instock{background:var(--success-bg);color:var(--success);}
 .badge-shipped{background:var(--shipped-bg);color:var(--shipped);}
 .badge-alert{background:var(--warning-bg);color:var(--warning);}
-.mono{font-family:var(--mono);}
-.num{text-align:right;font-family:var(--mono);}
+.mono{font-family:var(--sans);font-variant-numeric:normal;font-feature-settings:'zero' 0;}
+.num{text-align:right;font-family:var(--sans);font-variant-numeric:normal;font-feature-settings:'zero' 0;}
 .actions-cell{display:flex;gap:6px;}
 
 /* ---------- Modal ---------- */
@@ -150,7 +150,7 @@ tr.row-shipped:hover td{background:#E7E9EC;}
 .totals-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-top:16px;display:flex;flex-wrap:wrap;gap:24px;}
 .totals-panel .item{min-width:130px;}
 .totals-panel .item .l{font-size:12px;color:var(--ink-soft);margin-bottom:4px;}
-.totals-panel .item .v{font-family:var(--mono);font-size:17px;font-weight:600;}
+.totals-panel .item .v{font-family:var(--sans);font-variant-numeric:normal;font-feature-settings:'zero' 0;font-size:17px;font-weight:600;}
 .totals-panel .item.grand .v{font-size:22px;color:var(--accent);}
 .mini-input{width:56px;padding:5px 6px;font-size:12.5px;}
 .mini-input.wide{width:78px;}
@@ -507,6 +507,7 @@ async function saveShipments(){
 function uid(){ return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function pad(n){ return n<10 ? '0'+n : ''+n; }
 function toISO(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function displayDate(value){ return String(value||'').replaceAll('-','/'); }
 function parseISO(s){ if(!s) return null; const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 function daysBetween(a,b){ return Math.round((b-a)/86400000); }
 function fmtMoney(n){ return 'NT$'+Math.round(n||0).toLocaleString('zh-Hant'); }
@@ -645,7 +646,7 @@ function renderInventory(){
         const abnormalBadge = abn ? ' <span class="badge badge-alert">異常</span>' : '';
         const rowClasses = [st==='shipped'?'row-shipped':'', abn?'row-abnormal':''].filter(Boolean).join(' ');
         return `<tr class="${rowClasses}" data-id="${r.id}">
-          <td class="mono">${esc((r.inboundDate||'').replaceAll('-','/'))}</td>
+          <td class="mono">${esc(displayDate(r.inboundDate))}</td>
           <td class="sku-cell">${esc(r.sku)}</td>
           <td class="num">${esc(r.qty)}</td>
           <td class="num">${esc(r.pallets)}</td>
@@ -866,7 +867,7 @@ function renderPutawayCreate(){
     batches.map(b=>`
       <div class="batch-item">
         <div class="info">
-          <div class="date">${esc(b.batchDate)}</div>
+          <div class="date">${esc(displayDate(b.batchDate))}</div>
           <div class="prog">已上架 ${b.done} / ${b.total} 板</div>
           <div class="progress-bar"><div class="fill" style="width:${b.total?Math.round(b.done/b.total*100):0}%"></div></div>
         </div>
@@ -898,7 +899,7 @@ function renderPutawayScan(){
   const scannedCount = pendingItems.filter(i=>putawayScanDraft[i.id]?.location || i.location).length;
 
   const selectHtml = `<select id="pw-batch-select">
-    ${openBatches.map(b=>`<option value="${b.batchId}" ${b.batchId===currentBatchId?'selected':''}>${esc(b.batchDate)}（已上架 ${b.done}/${b.total}）</option>`).join('')}
+    ${openBatches.map(b=>`<option value="${b.batchId}" ${b.batchId===currentBatchId?'selected':''}>${esc(displayDate(b.batchDate))}（已上架 ${b.done}/${b.total}）</option>`).join('')}
   </select>`;
 
   const allPendingScanned = pendingItems.length>0 && scannedCount===pendingItems.length;
@@ -909,7 +910,7 @@ function renderPutawayScan(){
   ` : `
     <div class="current-card">
       <div class="meta">目前作業　棧板 <b>No.${current.seq}</b> ／ 共 ${batch.total} 板（已暫存 ${scannedCount}/${pendingItems.length} 板）</div>
-      <div class="meta">SKU <b>${esc(current.sku)}</b>　入倉日 <b>${esc(current.batchDate)}</b>　數量 <b>${esc(current.qty)}</b></div>
+      <div class="meta">SKU <b>${esc(current.sku)}</b>　入倉日 <b>${esc(displayDate(current.batchDate))}</b>　數量 <b>${esc(current.qty)}</b></div>
       <div class="scan-row">
         <input type="text" id="pw-scan-input" placeholder="掃描或輸入儲位後按 Enter" autocomplete="off">
         <button class="btn btn-camera" id="btn-open-location-camera" type="button" aria-label="使用相機掃描儲位條碼">📷 相機掃描</button>
@@ -1250,7 +1251,7 @@ function openPutawayBatchDetails(batchId){
     <div class="overlay" id="putaway-detail-overlay" role="dialog" aria-modal="true">
       <div class="modal">
         <h3>上架批次明細</h3>
-        <div style="color:var(--ink-soft);font-size:13px;margin:-8px 0 14px;">${esc(batch.batchDate)}｜共 ${batch.total} 板，已上架 ${batch.done} 板</div>
+        <div style="color:var(--ink-soft);font-size:13px;margin:-8px 0 14px;">${esc(displayDate(batch.batchDate))}｜共 ${batch.total} 板，已上架 ${batch.done} 板</div>
         <div class="batch-detail-list">
           ${batch.items.map(item=>`<div class="batch-detail-row">
             <b>No.${esc(item.seq)}　${esc(item.sku)}</b><span class="pstatus ${item.status==='done'?'done':'pending'}">${item.status==='done'?'已上架':'待上架'}</span>
@@ -1468,7 +1469,7 @@ function renderOutboundCreate(){
         row.candidates.map((c,ci)=>`
           <label class="ob-cand ${row.selectedIds.includes(c.id)?'checked':''}">
             <input type="checkbox" data-act="toggle-ob-cand" data-row="${idx}" data-recid="${c.id}" ${row.selectedIds.includes(c.id)?'checked':''}>
-            <span class="mono">${esc(c.inboundDate)}</span>
+            <span class="mono">${esc(displayDate(c.inboundDate))}</span>
             <span>儲位 ${esc(c.location)||'—'}</span>
             <span>數量 ${esc(c.qty)}</span>
             ${ci===0?'<span class="oldest-tag">最舊／FIFO優先</span>':''}
@@ -1778,7 +1779,7 @@ function renderBillingTable(b){
     ${b.rows.map(row=>{
       const r = row.rec;
       return `<tr data-bid="${r.id}">
-        <td class="mono">${esc(r.inboundDate)}</td>
+        <td class="mono">${esc(displayDate(r.inboundDate))}</td>
         <td>${esc(r.sku)}</td>
         <td class="mono">${esc(r.outboundDate)||'—'}</td>
         <td class="num">${esc(r.pallets)}</td>

@@ -518,6 +518,26 @@ function render(){
   }
 }
 
+// 主選單再次點擊時，回復該頁第一次進入時的操作畫面；已儲存的資料不受影響。
+function resetTabView(tab){
+  if(tab==='inventory'){
+    invFilter = {q:'',status:'all'};
+  }else if(tab==='billing'){
+    billingPeriod = {start:'',end:''};
+    billingRows = null;
+  }else if(tab==='putaway'){
+    putawaySubTab = 'create';
+    draftRows = [{sku:'',qty:'',pallets:''}];
+    draftDate = '';
+    currentBatchId = null;
+    currentItemId = null;
+  }else if(tab==='outbound'){
+    outboundSubTab = 'create';
+    outboundDraft = null;
+    printShipmentId = null;
+  }
+}
+
 /* =========================================================
    INVENTORY TAB
 ========================================================= */
@@ -1699,7 +1719,11 @@ async function saveSettingsFromForm(){
 ========================================================= */
 function attachHandlers(){
   document.querySelectorAll('nav.tabs button').forEach(b=>{
-    b.onclick = ()=>{ activeTab = b.dataset.tab; render(); };
+    b.onclick = ()=>{
+      activeTab = b.dataset.tab;
+      resetTabView(activeTab);
+      render();
+    };
   });
 
   if(activeTab==='inventory'){

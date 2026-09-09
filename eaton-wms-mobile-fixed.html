@@ -34,7 +34,7 @@
   --abnormal-border:#F3AFAF;
   --abnormal-ink:#B42318;
   --sans:-apple-system,BlinkMacSystemFont,'PingFang TC','Microsoft JhengHei','Segoe UI',Helvetica,Arial,sans-serif;
-  --mono:ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',monospace;
+  --mono:var(--sans);
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
@@ -645,7 +645,7 @@ function renderInventory(){
         const abnormalBadge = abn ? ' <span class="badge badge-alert">異常</span>' : '';
         const rowClasses = [st==='shipped'?'row-shipped':'', abn?'row-abnormal':''].filter(Boolean).join(' ');
         return `<tr class="${rowClasses}" data-id="${r.id}">
-          <td class="mono">${esc(r.inboundDate)}</td>
+          <td class="mono">${esc((r.inboundDate||'').replaceAll('-','/'))}</td>
           <td class="sku-cell">${esc(r.sku)}</td>
           <td class="num">${esc(r.qty)}</td>
           <td class="num">${esc(r.pallets)}</td>

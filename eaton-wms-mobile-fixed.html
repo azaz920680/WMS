@@ -805,9 +805,10 @@ async function exportInventory(){
   }
   const workbook = new ExcelJS.Workbook();
   const ws = workbook.addWorksheet('Inventory', {views:[{state:'frozen',ySplit:2}]});
+  // 與客戶提供的 Inventory Report 範本逐欄一致，勿以自動欄寬取代。
   ws.columns = [
-    {width:17.5},{width:17.2},{width:10.7},{width:30.7},
-    {width:15.7},{width:20.7},{width:15.7},{width:35.2}
+    {width:17.5},{width:17.1640625},{width:10.6640625},{width:30.6640625},
+    {width:30.6640625},{width:20.6640625},{width:15.6640625},{width:35.1640625}
   ];
   const thinBlack = {style:'thin',color:{argb:'FF000000'}};
   const allBorders = {top:thinBlack,bottom:thinBlack,left:thinBlack,right:thinBlack};
@@ -821,7 +822,11 @@ async function exportInventory(){
   ws.getCell('C1').font = {name:'Calibri',size:20,bold:true,color:{argb:titleColor}};
   ws.getCell('C1').alignment = {horizontal:'center',vertical:'middle'};
   const logoId = workbook.addImage({base64:INVENTORY_EXPORT_LOGO,extension:'png'});
-  ws.addImage(logoId, {tl:{col:0.15,row:0.12},br:{col:1.55,row:0.9}});
+  // 範本座標：左 0.14 吋、上 0.11 吋；logo 固定為 1.91 × 0.81 吋。
+  ws.addImage(logoId, {
+    tl:{col:0.104,row:0.111},
+    ext:{width:183.36,height:77.76}
+  });
   const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound\nDate','備註'];
   headers.forEach((label,index)=>{
     const cell = ws.getCell(2,index+1);

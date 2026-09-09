@@ -200,6 +200,11 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;}
 #location-camera-reader{width:100%;min-height:240px;background:#111;border-radius:8px;overflow:hidden;}
 #location-camera-reader video{width:100% !important;height:auto !important;}
 .camera-scanner .hint{color:var(--ink-soft);font-size:12.5px;margin:10px 0 14px;}
+.putaway-confirm{background:#fff;border-radius:14px;padding:28px;width:min(94vw,580px);text-align:center;}
+.putaway-confirm h3{font-size:22px;margin:0 0 14px;}
+.putaway-confirm p{font-size:18px;margin:0;white-space:nowrap;}
+.putaway-confirm .confirm-actions{display:flex;flex-direction:row;flex-wrap:nowrap;gap:12px;margin-top:26px;}
+.putaway-confirm .confirm-actions button{flex:1;font-size:17px;padding:12px 10px;}
 .done-banner{background:var(--success-bg);color:var(--success);border-radius:12px;padding:22px;text-align:center;font-size:15px;font-weight:600;margin-bottom:18px;}
 .pallet-cards{display:grid;gap:8px;}
 .pallet-card{
@@ -208,6 +213,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;}
 }
 .pallet-card.is-pending{border-left:4px solid var(--pending-border);}
 .pallet-card.is-done{border-left:4px solid var(--success);}
+.pallet-card.is-current{border-color:var(--accent);border-left-color:var(--accent);background:var(--accent-bg);box-shadow:0 0 0 2px rgba(44,95,138,0.16);}
 .pallet-card.is-abnormal{background:var(--abnormal-bg);border-color:var(--abnormal-border);}
 .pallet-card .pinfo{min-width:150px;font-size:12.5px;color:var(--ink-soft);}
 .pallet-card .pinfo b{color:var(--ink);font-size:13.5px;}
@@ -323,6 +329,9 @@ body.pdf-export .dn-actions{display:none;}
   table:not(.dn-table){min-width:1100px;}
   .current-card .scan-row{flex-direction:column;}
   .current-card .scan-row input,.current-card .scan-row button{width:100%;}
+  .putaway-confirm{padding:24px 16px;}
+  .putaway-confirm h3{font-size:20px;}
+  .putaway-confirm p{font-size:16px;}
   .pallet-card{flex-direction:column;align-items:stretch;}
   .pallet-card .ploc,.pallet-card .pabn{width:100%;}
   .draft-row{flex-direction:column;align-items:stretch;}
@@ -379,7 +388,8 @@ let draftRows = [{sku:'',qty:'',pallets:''}];
 let draftDate = '';
 let currentBatchId = null;
 let currentItemId = null;
-let putawayScanDraft = {}; // 本次掃描暫存；確認整批上架前不寫入資料庫
+const PUTAWAY_SCAN_STORAGE_KEY = 'eaton-putaway-scan-draft-v1';
+let putawayScanDraft = loadPutawayScanDraft(); // 本次掃描暫存；確認整批上架前不寫入資料庫
 
 let shipments = [];
 let outboundSubTab = 'create';
@@ -541,12 +551,27 @@ function resetTabView(tab){
     draftDate = '';
     currentBatchId = null;
     currentItemId = null;
-    putawayScanDraft = {};
   }else if(tab==='outbound'){
     outboundSubTab = 'create';
     outboundDraft = null;
     printShipmentId = null;
   }
+}
+
+function loadPutawayScanDraft(){
+  try{ return JSON.parse(localStorage.getItem(PUTAWAY_SCAN_STORAGE_KEY)||'{}')||{}; }
+  catch(e){ return {}; }
+}
+
+function savePutawayScanDraft(){
+  try{ localStorage.setItem(PUTAWAY_SCAN_STORAGE_KEY,JSON.stringify(putawayScanDraft)); }
+  catch(e){}
+}
+
+function clearPutawayScanDraftForBatch(batchId){
+  const batch = batchesFromItems().find(b=>b.batchId===batchId);
+  if(batch) batch.items.forEach(item=>delete putawayScanDraft[item.id]);
+  savePutawayScanDraft();
 }
 
 /* =========================================================
@@ -849,8 +874,12 @@ function renderPutawayScan(){
   if(batches.length===0){
     return `<div class="table-wrap"><div class="empty-state"><div class="big">尚未建立任何上架清單</div>請先切換到「建立上架清單」新增批次。</div></div>`;
   }
-  if(!currentBatchId || !batches.find(b=>b.batchId===currentBatchId)){
-    currentBatchId = batches[0].batchId;
+  const openBatches = batches.filter(b=>b.done<b.total);
+  if(openBatches.length===0){
+    return `<div class="done-banner">目前沒有待上架批次。<br><button class="btn btn-primary" id="btn-go-putaway-create">建立上架清單</button></div>`;
+  }
+  if(!currentBatchId || !openBatches.find(b=>b.batchId===currentBatchId)){
+    currentBatchId = openBatches[0].batchId;
   }
   const batch = batches.find(b=>b.batchId===currentBatchId);
   const items = batch.items;
@@ -860,7 +889,7 @@ function renderPutawayScan(){
   const scannedCount = pendingItems.filter(i=>putawayScanDraft[i.id]?.location || i.location).length;
 
   const selectHtml = `<select id="pw-batch-select">
-    ${batches.map(b=>`<option value="${b.batchId}" ${b.batchId===currentBatchId?'selected':''}>${esc(b.batchDate)}（已上架 ${b.done}/${b.total}）</option>`).join('')}
+    ${openBatches.map(b=>`<option value="${b.batchId}" ${b.batchId===currentBatchId?'selected':''}>${esc(b.batchDate)}（已上架 ${b.done}/${b.total}）</option>`).join('')}
   </select>`;
 
   const currentHtml = pendingItems.length===0 ? `<div class="done-banner">🎉 本批次共 ${batch.total} 板已全部上架完成</div>` : !current ? `
@@ -886,7 +915,7 @@ function renderPutawayScan(){
     const abnormalText = staged.abnormalText ?? it.abnormalText;
     const isStaged = it.status==='pending' && !!location;
     const isAbnormal = !!abnormalText;
-    const cls = ['pallet-card', it.status==='done'?'is-done':'is-pending', isAbnormal?'is-abnormal':''].join(' ');
+    const cls = ['pallet-card', it.status==='done'?'is-done':'is-pending', it.id===(current&&current.id)?'is-current':'', isAbnormal?'is-abnormal':''].join(' ');
     return `<div class="${cls}" data-item-id="${it.id}">
       <div class="pinfo"><b>No.${it.seq}</b> ${esc(it.sku)}<br>數量 ${esc(it.qty)}</div>
       <input type="text" class="ploc ${it.status==='pending'?'pending-bg':''}" placeholder="儲位" data-pfield="location" data-item-id="${it.id}" value="${esc(location)}">
@@ -1117,6 +1146,7 @@ function stagePutaway(locationVal, abnormalVal){
   if(!current) return;
   if(!locationVal || !locationVal.trim()){ showToast('請輸入或掃描儲位'); return; }
   putawayScanDraft[current.id] = {location:locationVal.trim(),abnormalText:(abnormalVal||'').trim()};
+  savePutawayScanDraft();
   currentItemId = null;
   render();
   showToast(`No.${current.seq} 已暫存，尚未上架`);
@@ -1133,15 +1163,34 @@ async function finalizePutawayBatch(){
     showToast(`請先掃描 No.${missing.seq} 的儲位`);
     return;
   }
-  if(!confirm(`已完成 ${pending.length} 板掃描，確定要一次上架嗎？`)) return;
+  document.body.insertAdjacentHTML('beforeend',`
+    <div class="overlay" id="putaway-confirm-overlay" role="dialog" aria-modal="true">
+      <div class="putaway-confirm">
+        <h3>確認一次上架</h3>
+        <p>已完成 ${pending.length} 板掃描，確定要一次上架嗎？</p>
+        <div class="confirm-actions">
+          <button class="btn btn-primary" id="btn-commit-putaway" type="button">確定</button>
+          <button class="btn" id="btn-cancel-putaway" type="button">取消</button>
+        </div>
+      </div>
+    </div>`);
+  document.getElementById('btn-cancel-putaway').onclick = ()=>document.getElementById('putaway-confirm-overlay')?.remove();
+  document.getElementById('btn-commit-putaway').onclick = ()=>commitPutawayBatch(batch.batchId);
+}
+
+async function commitPutawayBatch(batchId){
+  document.getElementById('putaway-confirm-overlay')?.remove();
+  const batch = batchesFromItems().find(b=>b.batchId===batchId);
+  if(!batch) return;
+  const pending = batch.items.filter(i=>i.status==='pending');
   pending.forEach(item=>{
     const staged = putawayScanDraft[item.id]||{};
     item.location = staged.location || item.location;
     item.abnormalText = staged.abnormalText ?? item.abnormalText;
     item.status = 'done';
     syncInventoryForItem(item);
-    delete putawayScanDraft[item.id];
   });
+  clearPutawayScanDraftForBatch(batchId);
   await savePutaway();
   await saveRecords();
   currentItemId = null;
@@ -1155,10 +1204,13 @@ function stagePalletField(itemId, field, value){
   if(!item) return;
   const staged = putawayScanDraft[itemId]||{};
   putawayScanDraft[itemId] = {...staged,[field]:value};
+  savePutawayScanDraft();
+  render();
 }
 
 async function deleteBatch(batchId){
   if(!confirm('確定要刪除這個上架批次嗎？已上架且已併入庫存的資料不會一併刪除。')) return;
+  clearPutawayScanDraftForBatch(batchId);
   putawayItems = putawayItems.filter(i=>i.batchId!==batchId);
   await savePutaway();
   render();
@@ -1919,6 +1971,8 @@ function attachHandlers(){
     if(putawaySubTab==='scan'){
       const sel = document.getElementById('pw-batch-select');
       if(sel) sel.onchange = (e)=>{ currentBatchId = e.target.value; currentItemId=null; render(); };
+      const goCreateBtn = document.getElementById('btn-go-putaway-create');
+      if(goCreateBtn) goCreateBtn.onclick = ()=>{ putawaySubTab='create'; currentItemId=null; render(); };
 
       const confirmBtn = document.getElementById('pw-confirm-btn');
       const scanInput = document.getElementById('pw-scan-input');

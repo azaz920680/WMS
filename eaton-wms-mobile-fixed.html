@@ -813,7 +813,7 @@ async function exportInventory(){
         || String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true})
         || String(a.location||'').localeCompare(String(b.location||''),undefined,{numeric:true});
     }
-    return (b.inboundDate||'').localeCompare(a.inboundDate||'');
+    return (a.inboundDate||'').localeCompare(b.inboundDate||'');
   });
   const reportMonth = displayDate(toISO(new Date())).slice(0,7);
   if(typeof ExcelJS==='undefined'){

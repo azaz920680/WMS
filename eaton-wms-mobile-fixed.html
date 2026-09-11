@@ -806,14 +806,13 @@ async function exportInventory(){
   const rows = filteredRecords().sort((a,b)=>{
     const aShipped = statusOf(a)==='shipped';
     const bShipped = statusOf(b)==='shipped';
-    // 已出貨資料置頂，並以入倉日由早到晚排列；同日再按 SKU、儲位排序。
+    // 已出貨資料置頂；各群組依入倉日、SKU、儲位、出貨日由小到大排列。
     if(aShipped !== bShipped) return aShipped ? -1 : 1;
-    if(aShipped){
-      return (a.inboundDate||'').localeCompare(b.inboundDate||'')
-        || String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true})
-        || String(a.location||'').localeCompare(String(b.location||''),undefined,{numeric:true});
-    }
-    return (a.inboundDate||'').localeCompare(b.inboundDate||'');
+    const compare = (left,right)=>String(left||'').localeCompare(String(right||''),undefined,{numeric:true,sensitivity:'base'});
+    return compare(a.inboundDate,b.inboundDate)
+      || compare(a.sku,b.sku)
+      || compare(a.location,b.location)
+      || compare(a.outboundDate,b.outboundDate);
   });
   const reportMonth = displayDate(toISO(new Date())).slice(0,7);
   if(typeof ExcelJS==='undefined'){

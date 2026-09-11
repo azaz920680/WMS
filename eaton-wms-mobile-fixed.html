@@ -808,7 +808,18 @@ async function exportInventory(){
     const bShipped = statusOf(b)==='shipped';
     // 已出貨資料置頂；各群組依入倉日、SKU、儲位、出貨日由小到大排列。
     if(aShipped !== bShipped) return aShipped ? -1 : 1;
-    const compare = (left,right)=>String(left||'').localeCompare(String(right||''),undefined,{numeric:true,sensitivity:'base'});
+    // 使用 Excel 式字元排序：0–9 在 A–Z 之前，避免自然排序將 0A 排在 07 前。
+    const compare = (left,right)=>{
+      const a = String(left||'').toUpperCase();
+      const b = String(right||'').toUpperCase();
+      const sharedLength = Math.min(a.length,b.length);
+      for(let i=0;i<sharedLength;i++){
+        const aCode = a.charCodeAt(i);
+        const bCode = b.charCodeAt(i);
+        if(aCode !== bCode) return aCode < bCode ? -1 : 1;
+      }
+      return a.length - b.length;
+    };
     return compare(a.inboundDate,b.inboundDate)
       || compare(a.sku,b.sku)
       || compare(a.location,b.location)

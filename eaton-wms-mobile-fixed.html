@@ -511,6 +511,12 @@ function pad(n){ return n<10 ? '0'+n : ''+n; }
 function toISO(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
 function displayDate(value){ return String(value||'').replaceAll('-','/'); }
 function parseISO(s){ if(!s) return null; const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+// ExcelJS 以 UTC 序號寫入 Date；使用 UTC 正午避免台灣時區在午夜被換算成前一天。
+function parseExcelDate(s){
+  if(!s) return null;
+  const [y,m,d] = String(s).replaceAll('/','-').split('-').map(Number);
+  return new Date(Date.UTC(y,m-1,d,12,0,0));
+}
 function daysBetween(a,b){ return Math.round((b-a)/86400000); }
 function fmtMoney(n){ return 'NT$'+Math.round(n||0).toLocaleString('zh-Hant'); }
 function esc(s){ return (s===undefined||s===null)?'':String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -800,10 +806,10 @@ async function exportInventory(){
   const rows = filteredRecords().sort((a,b)=>{
     const aShipped = statusOf(a)==='shipped';
     const bShipped = statusOf(b)==='shipped';
-    // 已出貨資料置頂，並以出貨日由早到晚排列；同日再按 SKU、儲位排序。
+    // 已出貨資料置頂，並以入倉日由早到晚排列；同日再按 SKU、儲位排序。
     if(aShipped !== bShipped) return aShipped ? -1 : 1;
     if(aShipped){
-      return (a.outboundDate||'').localeCompare(b.outboundDate||'')
+      return (a.inboundDate||'').localeCompare(b.inboundDate||'')
         || String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true})
         || String(a.location||'').localeCompare(String(b.location||''),undefined,{numeric:true});
     }
@@ -847,7 +853,7 @@ async function exportInventory(){
   const logoId = workbook.addImage({base64:INVENTORY_EXPORT_LOGO,extension:'png'});
   // Logo 固定為 1.91 × 0.81 吋，並向右微調以對齊範本內容起點。
   ws.addImage(logoId, {
-    tl:{col:0.23,row:0.111},
+    tl:{col:0.27,row:0.111},
     ext:{width:183.36,height:77.76}
   });
   const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound\nDate','備註'];
@@ -864,13 +870,13 @@ async function exportInventory(){
     const row = ws.getRow(rowNumber);
     row.height = 20;
     row.values = [
-      parseISO(record.inboundDate)||null,
+      parseExcelDate(record.inboundDate)||null,
       Number(record.qty)||0,
       Number(record.pallets)||0,
       record.sku||'',
       record.location||'',
       record.containerNo||'',
-      record.outboundDate ? (parseISO(record.outboundDate)||null) : null,
+      record.outboundDate ? (parseExcelDate(record.outboundDate)||null) : null,
       record.note||''
     ];
     const isShipped = statusOf(record)==='shipped';

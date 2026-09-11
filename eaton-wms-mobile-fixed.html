@@ -847,14 +847,14 @@ async function exportInventory(){
     cell.border = {};
   }
   ws.mergeCells('B1:H1');
-  // 以不可見的全形空白保留置中格式，同時讓標題視覺向左微調約 60 像素。
-  ws.getCell('B1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}${'\u2002'.repeat(12)}`;
+  // 以不可見的全形空白保留置中格式，同時讓標題視覺向左微調約 80 像素。
+  ws.getCell('B1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}${'\u2002'.repeat(16)}`;
   ws.getCell('B1').font = {name:'Calibri',size:20,bold:true,color:{argb:titleColor}};
   ws.getCell('B1').alignment = {horizontal:'center',vertical:'middle'};
   const logoId = workbook.addImage({base64:INVENTORY_EXPORT_LOGO,extension:'png'});
   // Logo 固定為 1.91 × 0.81 吋，並向右微調以對齊範本內容起點。
   ws.addImage(logoId, {
-    tl:{col:0.47,row:0.111},
+    tl:{col:0.705,row:0.111},
     ext:{width:183.36,height:77.76}
   });
   const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound\nDate','備註'];

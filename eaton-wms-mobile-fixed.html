@@ -797,7 +797,18 @@ function handleImportFile(file){
 }
 
 async function exportInventory(){
-  const rows = filteredRecords();
+  const rows = filteredRecords().sort((a,b)=>{
+    const aShipped = statusOf(a)==='shipped';
+    const bShipped = statusOf(b)==='shipped';
+    // 已出貨資料置頂，並以出貨日由早到晚排列；同日再按 SKU、儲位排序。
+    if(aShipped !== bShipped) return aShipped ? -1 : 1;
+    if(aShipped){
+      return (a.outboundDate||'').localeCompare(b.outboundDate||'')
+        || String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true})
+        || String(a.location||'').localeCompare(String(b.location||''),undefined,{numeric:true});
+    }
+    return (b.inboundDate||'').localeCompare(a.inboundDate||'');
+  });
   const reportMonth = displayDate(toISO(new Date())).slice(0,7);
   if(typeof ExcelJS==='undefined'){
     showToast('Excel 匯出元件尚未載入，請確認網路後重試');
@@ -811,8 +822,9 @@ async function exportInventory(){
     {width:21.1},{width:20.625},{width:12.5},{width:37.5},
     {width:37.5},{width:25},{width:18.75},{width:43.125}
   ];
-  const thinBlack = {style:'thin',color:{argb:'FF000000'}};
-  const allBorders = {top:thinBlack,bottom:thinBlack,left:thinBlack,right:thinBlack};
+  // 白色、背景 1、較深 25%：套用至所有資料與表頭框線。
+  const thinGray = {style:'thin',color:{argb:'FFBFBFBF'}};
+  const allBorders = {top:thinGray,bottom:thinGray,left:thinGray,right:thinGray};
   // Office 佈景主題色彩：藍色輔色 1（較深 25%）與輔色 5（較淺 60%）。
   const titleColor = 'FF2F5597';
   const headerFill = 'FFBDD7EE';
@@ -833,9 +845,9 @@ async function exportInventory(){
   ws.getCell('B1').font = {name:'Calibri',size:20,bold:true,color:{argb:titleColor}};
   ws.getCell('B1').alignment = {horizontal:'center',vertical:'middle'};
   const logoId = workbook.addImage({base64:INVENTORY_EXPORT_LOGO,extension:'png'});
-  // 範本座標：左 0.14 吋、上 0.11 吋；logo 固定為 1.91 × 0.81 吋。
+  // Logo 固定為 1.91 × 0.81 吋，並向右微調以對齊範本內容起點。
   ws.addImage(logoId, {
-    tl:{col:0.104,row:0.111},
+    tl:{col:0.23,row:0.111},
     ext:{width:183.36,height:77.76}
   });
   const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound\nDate','備註'];
@@ -866,7 +878,8 @@ async function exportInventory(){
       const cell = ws.getCell(rowNumber,col);
       cell.font = {name:'Calibri',size:15,color:{argb:bodyTextColor}};
       cell.alignment = {horizontal:'center',vertical:'middle'};
-      cell.border = allBorders;
+      // 範本中已出貨資料為純灰底，不顯示儲存格框線。
+      cell.border = isShipped ? {} : allBorders;
       const fill = isShipped
         ? shippedFill
         : (col <= 5 ? inboundFill : pendingDetailFill);

@@ -158,7 +158,7 @@ tr.row-shipped:hover td{background:#E7E9EC;}
 .period-bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
 .period-bar label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-soft);font-weight:500;}
 .assumption-note{background:var(--accent-bg);border:1px solid #C9DCE9;border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--accent-dark);margin-bottom:16px;line-height:1.6;}
-.totals-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-top:16px;display:flex;flex-wrap:wrap;gap:24px;}
+.totals-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:16px 0;display:flex;flex-wrap:wrap;gap:24px;}
 .totals-panel .item{min-width:130px;}
 .totals-panel .item .l{font-size:12px;color:var(--ink-soft);margin-bottom:4px;}
 .totals-panel .item .v{font-family:var(--sans);font-variant-numeric:normal;font-feature-settings:'zero' 0;font-size:17px;font-weight:600;}
@@ -1444,8 +1444,8 @@ function normalizeLocationCode(value){
 }
 
 function isValidLocationCode(value){
-  // 格式：兩個英文字母 + 兩位數字 + 一個大寫英文字母 + 一位數字，例如 AW00A1。
-  return /^[A-Z]{2}\d{2}[A-Z]\d$/.test(value);
+  // 標準格式為 AW00A1；貴重、空地、鐵網等中文儲位說明亦可使用。
+  return /(貴重|空地|鐵網)/.test(value) || /^[A-Z]{2}\d{2}[A-Z]\d$/.test(value);
 }
 
 function stagePutaway(locationVal, abnormalVal){
@@ -1453,7 +1453,7 @@ function stagePutaway(locationVal, abnormalVal){
   if(!current) return;
   const location = normalizeLocationCode(locationVal);
   if(!location){ showToast('請輸入或掃描儲位'); return; }
-  if(!isValidLocationCode(location)){ showToast('儲位格式錯誤，請使用例如 AW00A1 或 BE12B2'); return; }
+  if(!isValidLocationCode(location)){ showToast('儲位格式錯誤，請使用例如 AW00A1、BE12B2，或輸入含貴重、空地、鐵網的儲位'); return; }
   putawayScanDraft[current.id] = {location,abnormalText:(abnormalVal||'').trim()};
   savePutawayScanDraft();
   currentItemId = null;
@@ -1472,7 +1472,7 @@ async function finalizePutawayBatch(){
   if(invalidItem){
     currentItemId = invalidItem.id;
     render();
-    showToast(`請確認 No.${invalidItem.seq} 的儲位格式，例如 AW00A1`);
+    showToast(`請確認 No.${invalidItem.seq} 的儲位格式，例如 AW00A1，或含貴重、空地、鐵網的儲位`);
     return;
   }
   document.body.insertAdjacentHTML('beforeend',`
@@ -1517,7 +1517,7 @@ function stagePalletField(itemId, field, value){
   if(field==='location'){
     const location = normalizeLocationCode(value);
     if(location && !isValidLocationCode(location)){
-      showToast('儲位格式錯誤，請使用例如 AW00A1 或 BE12B2');
+      showToast('儲位格式錯誤，請使用例如 AW00A1、BE12B2，或輸入含貴重、空地、鐵網的儲位');
       render();
       return;
     }
@@ -1985,9 +1985,8 @@ function computeBilling(){
   // per-record pallet-days in period (for proportional rent allocation)
   const recPalletDays = relevant.map(({r,ib,ob})=>{
     const effectiveEnd = ob || end;
-    const from = ib>start?ib:start;
-    const to = effectiveEnd<end?effectiveEnd:end;
-    const days = Math.max(daysBetween(from,to)+1,0);
+    // 倉租天數以實際進倉日至出貨日計算，首尾兩日都包含在內。
+    const days = Math.max(daysBetween(ib,effectiveEnd)+1,0);
     return {r, ib, ob, days, palletDays: days*(Number(r.pallets)||0)};
   });
   let inboundTotal=0, outboundTotal=0, forkliftTotal=0, loadTotal=0, unloadTotal=0, overtimeTotal=0, adjustTotal=0;
@@ -2061,7 +2060,7 @@ function renderBillingTable(b){
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>進倉日期</th><th>SKU</th><th>出貨日期</th><th>棧板數</th><th>期間天數</th>
+      <th>進倉日期</th><th>SKU</th><th>出貨日期</th><th>棧板數</th><th>倉租天數</th>
       <th>倉租分攤</th><th>進倉費</th><th>出倉費</th><th>堆高機</th>
       <th>裝櫃</th><th>拆櫃</th><th>加班(平日H)</th><th>加班(假日H)</th><th>調整金額</th><th>小計</th>
     </tr></thead>
@@ -2095,7 +2094,7 @@ function renderBillingTable(b){
 function renderBillingTotals(b){
   return `
   <div class="totals-panel">
-    <div class="item"><div class="l">倉租合計（固定＋超額）</div><div class="v">${fmtMoney(b.totalRentFee)}</div></div>
+    <div class="item"><div class="l">倉租合計</div><div class="v">${fmtMoney(b.totalRentFee)}</div></div>
     <div class="item"><div class="l">進倉手續費</div><div class="v">${fmtMoney(b.inboundTotal)}</div></div>
     <div class="item"><div class="l">出倉手續費</div><div class="v">${fmtMoney(b.outboundTotal)}</div></div>
     <div class="item"><div class="l">堆高機費</div><div class="v">${fmtMoney(b.forkliftTotal)}</div></div>
@@ -2138,14 +2137,14 @@ function exportBilling(){
   if(!b) return;
   const data = b.rows.map(row=>({
     '進倉日期':row.rec.inboundDate,'SKU':row.rec.sku,'出貨日期':row.rec.outboundDate||'',
-    '棧板數':row.rec.pallets,'期間天數':row.days,'倉租分攤':'',
+    '棧板數':row.rec.pallets,'倉租天數':row.days,'倉租分攤':'',
     '進倉費':row.inboundFee,'出倉費':row.outboundFee,'堆高機':row.forkliftFee,
     '裝櫃費':row.loadFee,'拆櫃費':row.unloadFee,
     '加班費平日':(row.rec.overtimeWeekdayHours||0)*settings.overtimeWeekdayRate,
     '加班費假日':(row.rec.overtimeHolidayHours||0)*settings.overtimeHolidayRate,
     '調整金額':row.adjust,'小計':Math.round(row.lineTotal)
   }));
-  data.push({'進倉日期':'','SKU':'','出貨日期':'','棧板數':'','期間天數':'','倉租分攤':'','進倉費':'','出倉費':'','堆高機':'','裝櫃費':'','拆櫃費':'','加班費平日':'','加班費假日':'','調整金額':'請款總額','小計':Math.round(b.grandTotal)});
+  data.push({'進倉日期':'','SKU':'','出貨日期':'','棧板數':'','倉租天數':'','倉租分攤':'','進倉費':'','出倉費':'','堆高機':'','裝櫃費':'','拆櫃費':'','加班費平日':'','加班費假日':'','調整金額':'請款總額','小計':Math.round(b.grandTotal)});
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '請款明細');
@@ -2237,8 +2236,13 @@ function attachHandlers(){
       // 中文輸入法在組字期間不可重新渲染，否則組字會被中斷而無法正常輸入。
       searchEl.oncompositionstart = ()=>{ searchEl.dataset.composing = 'true'; };
       searchEl.oncompositionend = e=>{
-        delete searchEl.dataset.composing;
-        applyInventorySearch(e.target.value);
+        const input = e.currentTarget;
+        delete input.dataset.composing;
+        // Safari 的最後一次 input 事件會在 compositionend 後才寫入；延後一個事件循環，
+        // 避免重繪時把最後一個中文字（例如「重」）中斷。
+        setTimeout(()=>{
+          if(input.isConnected) applyInventorySearch(input.value);
+        },0);
       };
       searchEl.oninput = e=>{
         if(e.isComposing || e.target.dataset.composing==='true') return;

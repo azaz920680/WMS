@@ -383,6 +383,7 @@ body.pdf-export .dn-actions{display:none;}
 let records = [];
 let settings = {
   freeAllowancePallets: 300,
+  fixedWarehouseRent: 350000,
   rentRatePerPalletDay: 10,
   inboundFeePerPallet: 200,
   outboundFeePerPallet: 200,
@@ -701,7 +702,7 @@ function confirmInventoryChanges(changes){
         <h3 id="inventory-change-confirm-title">確認儲存變更</h3>
         <p class="change-confirm-intro">請確認以下資料是否正確：</p>
         <ul class="change-list">
-          ${changes.map(change=>`<li>確定變更${esc(change.label)} ${esc(inventoryChangeValue(change.field, change.before))} 至 ${esc(inventoryChangeValue(change.field, change.after))}嗎？</li>`).join('')}
+          ${changes.map(change=>`<li>確定變更${esc(change.label)} ${esc(inventoryChangeValue(change.field, change.before))} 至 ${esc(inventoryChangeValue(change.field, change.after))} 嗎？</li>`).join('')}
         </ul>
         <div class="modal-actions">
           <button class="btn btn-primary" id="btn-confirm-inventory-change" type="button">確定</button>
@@ -811,7 +812,7 @@ function inventoryFormError(id, message){
 }
 
 function validateInventoryForm(data){
-  if(!/^[0-9-]+$/.test(data.sku)) return inventoryFormError('f-sku','SKU 物料只能輸入數字與「-」');
+  if(!/^[A-Za-z0-9-]+$/.test(data.sku)) return inventoryFormError('f-sku','SKU 物料只能輸入英文字母、數字與「-」');
   if(data.qty!=='' && !/^\d+$/.test(data.qty)) return inventoryFormError('f-qty','數量只能輸入數字');
   if(data.pallets!=='' && !/^\d+$/.test(data.pallets)) return inventoryFormError('f-pallets','棧板數只能輸入數字');
   if(data.location && !/(貴重|空地|鐵網)/.test(data.location) && !/^[A-Za-z]{2}\d{2}[A-Z]\d$/.test(data.location)){
@@ -833,7 +834,7 @@ function openRecordModal(rec){
       <div class="form-grid">
         <label>進倉日期<input type="date" id="f-inboundDate" value="${esc(r.inboundDate)}"></label>
         <label>出貨日期<input type="date" id="f-outboundDate" value="${esc(r.outboundDate)}"></label>
-        <label>SKU 物料<input type="text" id="f-sku" value="${esc(r.sku)}" inputmode="numeric" pattern="[0-9-]*" title="只能輸入數字與 -"></label>
+        <label>SKU 物料<input type="text" id="f-sku" value="${esc(r.sku)}" pattern="[A-Za-z0-9-]*" title="只能輸入英文字母、數字與 -"></label>
         <label>儲位<input type="text" id="f-location" value="${esc(r.location)}" placeholder="例如 AW00A1、BE12B2"></label>
         <label>數量 (組數/PCS)<input type="text" id="f-qty" value="${esc(r.qty)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
         <label>棧板數<input type="text" id="f-pallets" value="${esc(r.pallets)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
@@ -846,7 +847,7 @@ function openRecordModal(rec){
       </div>
     </div>`;
   document.body.appendChild(wrap);
-  addInventoryInputGuard('f-sku', value=>value.replace(/[^0-9-]/g,''));
+  addInventoryInputGuard('f-sku', value=>value.replace(/[^A-Za-z0-9-]/g,''));
   addInventoryInputGuard('f-qty', value=>value.replace(/\D/g,''));
   addInventoryInputGuard('f-pallets', value=>value.replace(/\D/g,''));
   addInventoryInputGuard('f-containerNo', value=>value.replace(/[^A-Za-z0-9]/g,''));
@@ -1968,7 +1969,10 @@ function computeBilling(){
 
   const dayExcess = dayStock.map(s=>Math.max(s-settings.freeAllowancePallets,0));
   const totalExcessPalletDays = dayExcess.reduce((a,b)=>a+b,0);
-  const totalRentFee = totalExcessPalletDays * settings.rentRatePerPalletDay;
+  const fixedWarehouseRent = Number(settings.fixedWarehouseRent)||350000;
+  const excessRentFee = totalExcessPalletDays * settings.rentRatePerPalletDay;
+  // 每期固定倉租之外，僅超出免費額度的棧板日另計超額倉租。
+  const totalRentFee = fixedWarehouseRent + excessRentFee;
 
   // per-record pallet-days in period (for proportional rent allocation)
   const recPalletDays = relevant.map(({r,ib,ob})=>{
@@ -1978,13 +1982,12 @@ function computeBilling(){
     const days = Math.max(daysBetween(from,to)+1,0);
     return {r, ib, ob, days, palletDays: days*(Number(r.pallets)||0)};
   });
-  const sumPalletDays = recPalletDays.reduce((s,x)=>s+x.palletDays,0) || 1;
-
   let inboundTotal=0, outboundTotal=0, forkliftTotal=0, loadTotal=0, unloadTotal=0, overtimeTotal=0, adjustTotal=0;
 
   const rows = recPalletDays.map(({r,ib,ob,days,palletDays})=>{
     const pallets = Number(r.pallets)||0;
-    const inboundInPeriod = ib>=start && ib<=end;
+    // 進倉費依本次產生的請款明細計算；資料在請款期前入倉時也不遺漏費用。
+    const inboundInPeriod = true;
     const outboundInPeriod = ob && ob>=start && ob<=end;
     const inboundFee = inboundInPeriod ? pallets*settings.inboundFeePerPallet : 0;
     const outboundFee = outboundInPeriod ? pallets*settings.outboundFeePerPallet : 0;
@@ -1992,7 +1995,8 @@ function computeBilling(){
     const loadFee = r.loadContainer ? settings.loadContainerFee : 0;
     const unloadFee = r.unloadContainer ? settings.unloadContainerFee : 0;
     const otFee = (Number(r.overtimeWeekdayHours)||0)*settings.overtimeWeekdayRate + (Number(r.overtimeHolidayHours)||0)*settings.overtimeHolidayRate;
-    const rentShare = totalRentFee * (palletDays/sumPalletDays);
+    // 倉租以固定金額加超額倉租計，不分攤到個別棧板明細。
+    const rentShare = 0;
     const adjust = Number(r.adjustAmount)||0;
     const lineTotal = rentShare+inboundFee+outboundFee+forkliftFee+loadFee+unloadFee+otFee+adjust;
 
@@ -2002,7 +2006,7 @@ function computeBilling(){
     return {rec:r, days, rentShare, inboundFee, outboundFee, forkliftFee, loadFee, unloadFee, otFee, adjust, lineTotal};
   }).sort((a,b)=>(a.rec.inboundDate||'').localeCompare(b.rec.inboundDate||''));
 
-  const subtotal = rows.reduce((s,x)=>s+x.lineTotal,0);
+  const subtotal = totalRentFee + rows.reduce((s,x)=>s+x.lineTotal,0);
   const tax = settings.applyTax ? subtotal*(settings.taxRate/100) : 0;
   const grandTotal = subtotal+tax;
 
@@ -2011,7 +2015,7 @@ function computeBilling(){
   const currentStock = dayStock[dayStock.length-1]||0;
   const maxExcess = Math.max(...dayExcess,0);
 
-  return { rows, totalRentFee, inboundTotal, outboundTotal, forkliftTotal, loadTotal, unloadTotal, overtimeTotal, adjustTotal,
+  return { rows, fixedWarehouseRent, excessRentFee, totalRentFee, inboundTotal, outboundTotal, forkliftTotal, loadTotal, unloadTotal, overtimeTotal, adjustTotal,
     subtotal, tax, grandTotal, inboundPallets, outboundPallets, currentStock, maxExcess };
 }
 
@@ -2028,8 +2032,8 @@ function renderBilling(){
   </div>
 
   <div class="assumption-note">
-    <strong>計算說明：</strong>倉租費採「超額棧板日」計算 —— 每日在庫棧板數超過設定中的免費額度（目前 ${settings.freeAllowancePallets} 板）的部分才收費，
-    再依各筆資料在期間內的棧板天數比例分攤到每一筆明細。進倉/出倉手續費依實際發生日期是否落在期間內計算。裝櫃費、拆櫃費、加班費請於下表手動勾選/輸入（無法從日期自動判斷）。
+    <strong>計算說明：</strong>倉租費為每期固定 NT$${Number(settings.fixedWarehouseRent||350000).toLocaleString('zh-Hant')}，再加上每日在庫棧板數超過免費額度（目前 ${settings.freeAllowancePallets} 板）所產生的超額倉租；倉租不分攤到個別明細。
+    進倉費依本次請款明細的棧板數計算，出倉手續費依實際出貨日期是否落在期間內計算。裝櫃費、拆櫃費、加班費請於下表手動勾選/輸入（無法從日期自動判斷）。
     若計算結果與實際合約條款有出入，可在「調整金額」欄手動加減修正。
   </div>
 
@@ -2039,6 +2043,7 @@ function renderBilling(){
 
 function renderBillingTable(b){
   return `
+  ${renderBillingTotals(b)}
   <div class="stat-row">
     <div class="stat-card"><div class="label">進貨總板數</div><div class="value">${b.inboundPallets}</div></div>
     <div class="stat-card"><div class="label">出貨總板數</div><div class="value">${b.outboundPallets}</div></div>
@@ -2061,7 +2066,7 @@ function renderBillingTable(b){
         <td class="mono">${esc(r.outboundDate)||'—'}</td>
         <td class="num">${esc(r.pallets)}</td>
         <td class="num">${row.days}</td>
-        <td class="num">${fmtMoney(row.rentShare)}</td>
+        <td class="num">—</td>
         <td class="num">${fmtMoney(row.inboundFee)}</td>
         <td class="num">${fmtMoney(row.outboundFee)}</td>
         <td class="num">${fmtMoney(row.forkliftFee)}</td>
@@ -2076,8 +2081,13 @@ function renderBillingTable(b){
     </tbody>
   </table>
   </div>
+  `;
+}
+
+function renderBillingTotals(b){
+  return `
   <div class="totals-panel">
-    <div class="item"><div class="l">倉租合計</div><div class="v">${fmtMoney(b.totalRentFee)}</div></div>
+    <div class="item"><div class="l">倉租合計（固定＋超額）</div><div class="v">${fmtMoney(b.totalRentFee)}</div></div>
     <div class="item"><div class="l">進倉手續費</div><div class="v">${fmtMoney(b.inboundTotal)}</div></div>
     <div class="item"><div class="l">出倉手續費</div><div class="v">${fmtMoney(b.outboundTotal)}</div></div>
     <div class="item"><div class="l">堆高機費</div><div class="v">${fmtMoney(b.forkliftTotal)}</div></div>
@@ -2120,7 +2130,7 @@ function exportBilling(){
   if(!b) return;
   const data = b.rows.map(row=>({
     '進倉日期':row.rec.inboundDate,'SKU':row.rec.sku,'出貨日期':row.rec.outboundDate||'',
-    '棧板數':row.rec.pallets,'期間天數':row.days,'倉租分攤':Math.round(row.rentShare),
+    '棧板數':row.rec.pallets,'期間天數':row.days,'倉租分攤':'',
     '進倉費':row.inboundFee,'出倉費':row.outboundFee,'堆高機':row.forkliftFee,
     '裝櫃費':row.loadFee,'拆櫃費':row.unloadFee,
     '加班費平日':(row.rec.overtimeWeekdayHours||0)*settings.overtimeWeekdayRate,
@@ -2143,6 +2153,7 @@ function renderSettings(){
   <div class="settings-card">
     <h4>倉租計算</h4>
     <div class="settings-grid">
+      <label>固定倉租 (NTD/期)<input type="number" id="s-fixedWarehouseRent" value="${s.fixedWarehouseRent}"></label>
       <label>免費棧板額度 (板)<input type="number" id="s-freeAllowancePallets" value="${s.freeAllowancePallets}"></label>
       <label>超額倉租單價 (NTD/板/日)<input type="number" id="s-rentRatePerPalletDay" value="${s.rentRatePerPalletDay}"></label>
     </div>
@@ -2176,6 +2187,7 @@ function renderSettings(){
 
 async function saveSettingsFromForm(){
   settings = {
+    fixedWarehouseRent: Number(document.getElementById('s-fixedWarehouseRent').value)||350000,
     freeAllowancePallets: Number(document.getElementById('s-freeAllowancePallets').value)||0,
     rentRatePerPalletDay: Number(document.getElementById('s-rentRatePerPalletDay').value)||0,
     inboundFeePerPallet: Number(document.getElementById('s-inboundFeePerPallet').value)||0,
@@ -2206,7 +2218,25 @@ function attachHandlers(){
 
   if(activeTab==='inventory'){
     const searchEl = document.getElementById('inv-search');
-    if(searchEl) searchEl.oninput = (e)=>{ invFilter.q = e.target.value; render(); document.getElementById('inv-search').focus(); document.getElementById('inv-search').selectionStart = document.getElementById('inv-search').value.length; };
+    if(searchEl){
+      const applyInventorySearch = value=>{
+        invFilter.q = value;
+        render();
+        const refreshedSearch = document.getElementById('inv-search');
+        refreshedSearch.focus();
+        refreshedSearch.selectionStart = refreshedSearch.value.length;
+      };
+      // 中文輸入法在組字期間不可重新渲染，否則組字會被中斷而無法正常輸入。
+      searchEl.oncompositionstart = ()=>{ searchEl.dataset.composing = 'true'; };
+      searchEl.oncompositionend = e=>{
+        delete searchEl.dataset.composing;
+        applyInventorySearch(e.target.value);
+      };
+      searchEl.oninput = e=>{
+        if(e.isComposing || e.target.dataset.composing==='true') return;
+        applyInventorySearch(e.target.value);
+      };
+    }
     const statusEl = document.getElementById('inv-status');
     if(statusEl) statusEl.onchange = (e)=>{ invFilter.status = e.target.value; render(); };
     const addBtn = document.getElementById('btn-add');

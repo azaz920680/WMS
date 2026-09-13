@@ -112,6 +112,7 @@ button{cursor:pointer;font-family:var(--sans);}
 .btn-danger{color:#B42318;border-color:#F0C4C0;background:#fff;}
 .btn-danger:hover{background:#FEF3F2;}
 .btn-sm{padding:5px 10px;font-size:12.5px;}
+input.input-invalid{border-color:#D92D20;background:#FEF3F2;}
 
 /* ---------- Table ---------- */
 .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:auto;}
@@ -144,6 +145,14 @@ tr.row-shipped:hover td{background:#E7E9EC;}
 .form-grid label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-soft);font-weight:500;}
 .form-grid label.full{grid-column:1/-1;}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+.change-confirm{max-width:680px;}
+.change-confirm h3{font-size:18px;margin-bottom:10px;}
+.change-confirm-intro{margin:0;color:var(--ink-soft);font-size:14px;line-height:1.6;}
+.change-list{margin:14px 0 0;padding:0;list-style:none;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.change-list li{padding:11px 14px;border-bottom:1px solid var(--border);font-size:14px;line-height:1.55;color:var(--ink);word-break:break-word;}
+.change-list li:last-child{border-bottom:0;}
+.change-confirm .modal-actions{justify-content:flex-start;}
+.change-confirm .modal-actions .btn{min-width:104px;}
 
 /* ---------- Billing ---------- */
 .period-bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
@@ -677,6 +686,141 @@ function renderInventory(){
 }
 
 /* Add/Edit Modal */
+function inventoryChangeValue(field, value){
+  const normalized = value===undefined || value===null || value==='' ? '（空白）' : String(value);
+  return field==='inboundDate' || field==='outboundDate' ? displayDate(normalized) : normalized;
+}
+
+function confirmInventoryChanges(changes){
+  return new Promise(resolve=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'overlay';
+    wrap.id = 'inventory-change-confirm-overlay';
+    wrap.innerHTML = `
+      <div class="modal change-confirm" role="dialog" aria-modal="true" aria-labelledby="inventory-change-confirm-title">
+        <h3 id="inventory-change-confirm-title">確認儲存變更</h3>
+        <p class="change-confirm-intro">請確認以下資料是否正確：</p>
+        <ul class="change-list">
+          ${changes.map(change=>`<li>確定變更${esc(change.label)} ${esc(inventoryChangeValue(change.field, change.before))} 至 ${esc(inventoryChangeValue(change.field, change.after))}嗎？</li>`).join('')}
+        </ul>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-confirm-inventory-change" type="button">確定</button>
+          <button class="btn" id="btn-cancel-inventory-change" type="button">取消</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = approved=>{ wrap.remove(); resolve(approved); };
+    document.getElementById('btn-confirm-inventory-change').onclick = ()=>close(true);
+    document.getElementById('btn-cancel-inventory-change').onclick = ()=>close(false);
+  });
+}
+
+function confirmInventoryDelete(record){
+  return new Promise(resolve=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'overlay';
+    wrap.id = 'inventory-delete-confirm-overlay';
+    wrap.innerHTML = `
+      <div class="modal change-confirm" role="dialog" aria-modal="true" aria-labelledby="inventory-delete-confirm-title">
+        <h3 id="inventory-delete-confirm-title">確認刪除庫存資料</h3>
+        <p class="change-confirm-intro">確定要刪除以下庫存資料嗎？此動作無法復原。</p>
+        <ul class="change-list">
+          <li>SKU 物料：${esc(record.sku || '（空白）')}</li>
+          <li>儲位：${esc(record.location || '（空白）')}</li>
+          <li>進倉日期：${esc(inventoryChangeValue('inboundDate', record.inboundDate))}</li>
+        </ul>
+        <div class="modal-actions">
+          <button class="btn btn-danger" id="btn-confirm-inventory-delete" type="button">確定刪除</button>
+          <button class="btn" id="btn-cancel-inventory-delete" type="button">取消</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = approved=>{ wrap.remove(); resolve(approved); };
+    document.getElementById('btn-confirm-inventory-delete').onclick = ()=>close(true);
+    document.getElementById('btn-cancel-inventory-delete').onclick = ()=>close(false);
+  });
+}
+
+function chooseInventoryOutboundDate(record){
+  return new Promise(resolve=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'overlay';
+    wrap.id = 'inventory-ship-confirm-overlay';
+    wrap.innerHTML = `
+      <div class="modal change-confirm" role="dialog" aria-modal="true" aria-labelledby="inventory-ship-confirm-title">
+        <h3 id="inventory-ship-confirm-title">標記出貨</h3>
+        <p class="change-confirm-intro">請選擇此筆庫存的出貨日期。</p>
+        <div class="form-grid" style="margin-top:16px;">
+          <label class="full">出貨日期<input type="date" id="inventory-outbound-date" value="${esc(toISO(new Date()))}"></label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-confirm-inventory-ship" type="button">確定</button>
+          <button class="btn" id="btn-cancel-inventory-ship" type="button">取消</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = value=>{ wrap.remove(); resolve(value); };
+    document.getElementById('btn-confirm-inventory-ship').onclick = ()=>{
+      const date = document.getElementById('inventory-outbound-date').value;
+      if(!date){ showToast('請選擇出貨日期'); return; }
+      close(date);
+    };
+    document.getElementById('btn-cancel-inventory-ship').onclick = ()=>close(null);
+    document.getElementById('inventory-outbound-date').focus();
+  });
+}
+
+function confirmInventoryUnship(){
+  return new Promise(resolve=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'overlay';
+    wrap.id = 'inventory-unship-confirm-overlay';
+    wrap.innerHTML = `
+      <div class="modal change-confirm" role="dialog" aria-modal="true" aria-labelledby="inventory-unship-confirm-title">
+        <h3 id="inventory-unship-confirm-title">取消出貨</h3>
+        <p class="change-confirm-intro">確定要取消出貨嗎？</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-confirm-inventory-unship" type="button">確定</button>
+          <button class="btn" id="btn-cancel-inventory-unship" type="button">取消</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = approved=>{ wrap.remove(); resolve(approved); };
+    document.getElementById('btn-confirm-inventory-unship').onclick = ()=>close(true);
+    document.getElementById('btn-cancel-inventory-unship').onclick = ()=>close(false);
+  });
+}
+
+function addInventoryInputGuard(id, sanitize){
+  const input = document.getElementById(id);
+  input.addEventListener('input', ()=>{
+    const sanitized = sanitize(input.value);
+    if(input.value!==sanitized) input.value = sanitized;
+    input.classList.remove('input-invalid');
+    input.removeAttribute('aria-invalid');
+  });
+}
+
+function inventoryFormError(id, message){
+  const input = document.getElementById(id);
+  input.classList.add('input-invalid');
+  input.setAttribute('aria-invalid','true');
+  input.focus();
+  showToast(message);
+  return false;
+}
+
+function validateInventoryForm(data){
+  if(!/^[0-9-]+$/.test(data.sku)) return inventoryFormError('f-sku','SKU 物料只能輸入數字與「-」');
+  if(data.qty!=='' && !/^\d+$/.test(data.qty)) return inventoryFormError('f-qty','數量只能輸入數字');
+  if(data.pallets!=='' && !/^\d+$/.test(data.pallets)) return inventoryFormError('f-pallets','棧板數只能輸入數字');
+  if(data.location && !/(貴重|空地|鐵網)/.test(data.location) && !/^[A-Za-z]{2}\d{2}[A-Z]\d$/.test(data.location)){
+    return inventoryFormError('f-location','儲位格式須為兩個英文字母＋兩位數字＋大寫英文字母＋一位數字，例如 AW00A1');
+  }
+  if(data.containerNo && !/^[A-Za-z0-9]+$/.test(data.containerNo)) return inventoryFormError('f-containerNo','櫃號只能輸入數字與英文字母');
+  return true;
+}
+
 function openRecordModal(rec){
   const isEdit = !!rec;
   const r = rec || {id:'', inboundDate:'', qty:'', pallets:'', sku:'', location:'', containerNo:'', outboundDate:'', note:''};
@@ -689,11 +833,11 @@ function openRecordModal(rec){
       <div class="form-grid">
         <label>進倉日期<input type="date" id="f-inboundDate" value="${esc(r.inboundDate)}"></label>
         <label>出貨日期<input type="date" id="f-outboundDate" value="${esc(r.outboundDate)}"></label>
-        <label>SKU 物料<input type="text" id="f-sku" value="${esc(r.sku)}"></label>
-        <label>儲位<input type="text" id="f-location" value="${esc(r.location)}"></label>
-        <label>數量 (組數/PCS)<input type="number" id="f-qty" value="${esc(r.qty)}"></label>
-        <label>棧板數<input type="number" id="f-pallets" value="${esc(r.pallets)}"></label>
-        <label>櫃號<input type="text" id="f-containerNo" value="${esc(r.containerNo)}"></label>
+        <label>SKU 物料<input type="text" id="f-sku" value="${esc(r.sku)}" inputmode="numeric" pattern="[0-9-]*" title="只能輸入數字與 -"></label>
+        <label>儲位<input type="text" id="f-location" value="${esc(r.location)}" placeholder="例如 AW00A1、BE12B2"></label>
+        <label>數量 (組數/PCS)<input type="text" id="f-qty" value="${esc(r.qty)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
+        <label>棧板數<input type="text" id="f-pallets" value="${esc(r.pallets)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
+        <label>櫃號<input type="text" id="f-containerNo" value="${esc(r.containerNo)}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
         <label class="full">備註<input type="text" id="f-note" value="${esc(r.note)}" placeholder="例如：異常、#0814*28板"></label>
       </div>
       <div class="modal-actions">
@@ -702,6 +846,14 @@ function openRecordModal(rec){
       </div>
     </div>`;
   document.body.appendChild(wrap);
+  addInventoryInputGuard('f-sku', value=>value.replace(/[^0-9-]/g,''));
+  addInventoryInputGuard('f-qty', value=>value.replace(/\D/g,''));
+  addInventoryInputGuard('f-pallets', value=>value.replace(/\D/g,''));
+  addInventoryInputGuard('f-containerNo', value=>value.replace(/[^A-Za-z0-9]/g,''));
+  document.getElementById('f-location').addEventListener('input', e=>{
+    e.target.classList.remove('input-invalid');
+    e.target.removeAttribute('aria-invalid');
+  });
   document.getElementById('modal-cancel').onclick = ()=>wrap.remove();
   wrap.addEventListener('click', e=>{ if(e.target===wrap) wrap.remove(); });
   document.getElementById('modal-save').onclick = async ()=>{
@@ -724,7 +876,17 @@ function openRecordModal(rec){
       unloadContainer: r.unloadContainer||false,
       adjustAmount: r.adjustAmount||0
     };
+    if(!validateInventoryForm(data)) return;
     if(isEdit){
+      const fields = [
+        ['inboundDate','進倉日期'], ['outboundDate','出貨日期'], ['sku','SKU 物料'], ['location','儲位'],
+        ['qty','數量 (組數/PCS)'], ['pallets','棧板數'], ['containerNo','櫃號'], ['note','備註']
+      ];
+      const changes = fields
+        .filter(([field])=>String(r[field]??'') !== String(data[field]??''))
+        .map(([field,label])=>({field,label,before:r[field],after:data[field]}));
+      if(changes.length===0){ showToast('沒有需要儲存的變更'); return; }
+      if(!await confirmInventoryChanges(changes)) return;
       const idx = records.findIndex(x=>x.id===r.id);
       records[idx] = data;
     } else {
@@ -2062,14 +2224,14 @@ function attachHandlers(){
         const rec = records.find(r=>r.id===id);
         if(btn.dataset.act==='edit') openRecordModal(rec);
         else if(btn.dataset.act==='ship'){
-          const d = prompt('請輸入出貨日期 (YYYY-MM-DD)', toISO(new Date()));
+          const d = await chooseInventoryOutboundDate(rec);
           if(d){ rec.outboundDate = d; await saveRecords(); render(); showToast('已標記出貨'); }
         } else if(btn.dataset.act==='unship'){
+          if(!await confirmInventoryUnship()) return;
           rec.outboundDate = null; await saveRecords(); render(); showToast('已取消出貨標記');
         } else if(btn.dataset.act==='del'){
-          if(confirm(`確定要刪除 SKU「${rec.sku}」這筆資料嗎？`)){
-            records = records.filter(r=>r.id!==id); await saveRecords(); render(); showToast('已刪除');
-          }
+          if(!await confirmInventoryDelete(rec)) return;
+          records = records.filter(r=>r.id!==id); await saveRecords(); render(); showToast('已刪除');
         }
       };
     });

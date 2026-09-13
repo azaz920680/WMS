@@ -384,7 +384,7 @@ let records = [];
 let settings = {
   freeAllowancePallets: 300,
   fixedWarehouseRent: 350000,
-  rentRatePerPalletDay: 10,
+  rentRatePerPalletDay: 0,
   inboundFeePerPallet: 200,
   outboundFeePerPallet: 200,
   forkliftFeePerPallet: 0,
@@ -451,7 +451,15 @@ async function loadState(){
   }catch(e){ records = []; showToast('讀取庫存資料失敗，請檢查網路'); }
   try{
     const snap = await db.collection('appdata').doc('billing-settings').get();
-    if(snap.exists) settings = Object.assign(settings, snap.data().value||{});
+    if(snap.exists){
+      const savedSettings = snap.data().value||{};
+      settings = Object.assign(settings, savedSettings);
+      // 舊版預設為 10；未有固定倉租欄位的舊設定改採目前待確認的 0。
+      if(!Object.prototype.hasOwnProperty.call(savedSettings,'fixedWarehouseRent') && savedSettings.rentRatePerPalletDay===10){
+        settings.rentRatePerPalletDay = 0;
+        await saveSettings();
+      }
+    }
   }catch(e){ /* keep defaults */ }
   try{
     const snap = await db.collection('appdata').doc('putaway-items').get();

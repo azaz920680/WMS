@@ -527,6 +527,16 @@ async function saveShipments(){
 function uid(){ return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function pad(n){ return n<10 ? '0'+n : ''+n; }
 function toISO(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+// 每月帳期固定為「前月 16 日至本月 15 日」；例如 9 月帳為 8/16～9/15。
+function currentBillingPeriod(){
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  return {
+    start: toISO(new Date(year, month-1, 16)),
+    end: toISO(new Date(year, month, 15))
+  };
+}
 function displayDate(value){ return String(value||'').replaceAll('-','/'); }
 function parseISO(s){ if(!s) return null; const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 // ExcelJS 以 UTC 序號寫入 Date；使用 UTC 正午避免台灣時區在午夜被換算成前一天。
@@ -546,6 +556,10 @@ function showToast(msg){
 }
 function statusOf(rec){
   return rec.outboundDate ? 'shipped' : 'instock';
+}
+// 舊資料的 containerNo 沿用為「拆櫃號」，確保既有庫存不會遺失欄位內容。
+function getUnloadContainerNo(rec){
+  return rec.unloadContainerNo ?? rec.containerNo ?? '';
 }
 function isAbnormal(rec){
   return !!(rec.note||'').includes('異常');
@@ -617,7 +631,7 @@ function filteredRecords(){
     if(invFilter.status==='alert' && !isAbnormal(r)) return false;
     if(invFilter.q){
       const q = invFilter.q.toLowerCase();
-      const hay = [r.sku,r.location,r.containerNo,r.note].join(' ').toLowerCase();
+      const hay = [r.sku,r.location,r.loadContainerNo,getUnloadContainerNo(r),r.note].join(' ').toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -643,7 +657,7 @@ function renderInventory(){
   </div>
 
   <div class="toolbar">
-    <input type="text" id="inv-search" placeholder="搜尋 SKU / 儲位 / 櫃號 / 備註" value="${esc(invFilter.q)}" style="width:230px;">
+    <input type="text" id="inv-search" placeholder="搜尋 SKU / 儲位 / 裝拆櫃號 / 備註" value="${esc(invFilter.q)}" style="width:230px;">
     <select id="inv-status">
       <option value="all" ${invFilter.status==='all'?'selected':''}>全部狀態</option>
       <option value="instock" ${invFilter.status==='instock'?'selected':''}>在庫</option>
@@ -660,11 +674,11 @@ function renderInventory(){
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>進倉日期</th><th>SKU 物料</th><th>數量</th><th>棧板數</th><th>儲位</th><th>櫃號</th>
-      <th>出貨日期</th><th>備註</th><th>狀態</th><th>操作</th>
+      <th>進倉日期</th><th>SKU 物料</th><th>數量</th><th>棧板數</th><th>儲位</th><th>裝櫃號</th>
+      <th>出貨日期</th><th>拆櫃號</th><th>備註</th><th>狀態</th><th>操作</th>
     </tr></thead>
     <tbody>
-    ${list.length===0 ? `<tr><td colspan="10"><div class="empty-state"><div class="big">目前沒有符合條件的庫存資料</div>試著調整篩選條件，或點選「新增庫存」建立第一筆資料。</div></td></tr>` :
+    ${list.length===0 ? `<tr><td colspan="11"><div class="empty-state"><div class="big">目前沒有符合條件的庫存資料</div>試著調整篩選條件，或點選「新增庫存」建立第一筆資料。</div></td></tr>` :
       list.map(r=>{
         const st = statusOf(r);
         const abn = isAbnormal(r);
@@ -677,8 +691,9 @@ function renderInventory(){
           <td class="num">${esc(r.qty)}</td>
           <td class="num">${esc(r.pallets)}</td>
           <td class="mono">${esc(r.location)}</td>
-          <td class="mono">${esc(r.containerNo)}</td>
+          <td class="mono">${esc(r.loadContainerNo)}</td>
           <td class="mono">${esc(r.outboundDate)||'—'}</td>
+          <td class="mono">${esc(getUnloadContainerNo(r))}</td>
           <td>${esc(r.note)}</td>
           <td>${statusBadge}${abnormalBadge}</td>
           <td class="actions-cell">
@@ -826,13 +841,14 @@ function validateInventoryForm(data){
   if(data.location && !/(貴重|空地|鐵網)/.test(data.location) && !/^[A-Za-z]{2}\d{2}[A-Z]\d$/.test(data.location)){
     return inventoryFormError('f-location','儲位格式須為兩個英文字母＋兩位數字＋大寫英文字母＋一位數字，例如 AW00A1');
   }
-  if(data.containerNo && !/^[A-Za-z0-9]+$/.test(data.containerNo)) return inventoryFormError('f-containerNo','櫃號只能輸入數字與英文字母');
+  if(data.loadContainerNo && !/^[A-Za-z0-9]+$/.test(data.loadContainerNo)) return inventoryFormError('f-loadContainerNo','裝櫃號只能輸入數字與英文字母');
+  if(data.unloadContainerNo && !/^[A-Za-z0-9]+$/.test(data.unloadContainerNo)) return inventoryFormError('f-unloadContainerNo','拆櫃號只能輸入數字與英文字母');
   return true;
 }
 
 function openRecordModal(rec){
   const isEdit = !!rec;
-  const r = rec || {id:'', inboundDate:'', qty:'', pallets:'', sku:'', location:'', containerNo:'', outboundDate:'', note:''};
+  const r = rec || {id:'', inboundDate:'', qty:'', pallets:'', sku:'', location:'', loadContainerNo:'', unloadContainerNo:'', outboundDate:'', note:''};
   const wrap = document.createElement('div');
   wrap.className = 'overlay';
   wrap.id = 'record-overlay';
@@ -841,12 +857,13 @@ function openRecordModal(rec){
       <h3>${isEdit?'編輯庫存資料':'新增庫存資料'}</h3>
       <div class="form-grid">
         <label>進倉日期<input type="date" id="f-inboundDate" value="${esc(r.inboundDate)}"></label>
-        <label>出貨日期<input type="date" id="f-outboundDate" value="${esc(r.outboundDate)}"></label>
+        <label>裝櫃號<input type="text" id="f-loadContainerNo" value="${esc(r.loadContainerNo)}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
         <label>SKU 物料<input type="text" id="f-sku" value="${esc(r.sku)}" pattern="[A-Za-z0-9-]*" title="只能輸入英文字母、數字與 -"></label>
         <label>儲位<input type="text" id="f-location" value="${esc(r.location)}" placeholder="例如 AW00A1、BE12B2"></label>
         <label>數量 (組數/PCS)<input type="text" id="f-qty" value="${esc(r.qty)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
         <label>棧板數<input type="text" id="f-pallets" value="${esc(r.pallets)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
-        <label>櫃號<input type="text" id="f-containerNo" value="${esc(r.containerNo)}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
+        <label>出貨日期<input type="date" id="f-outboundDate" value="${esc(r.outboundDate)}"></label>
+        <label>拆櫃號<input type="text" id="f-unloadContainerNo" value="${esc(getUnloadContainerNo(r))}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
         <label class="full">備註<input type="text" id="f-note" value="${esc(r.note)}" placeholder="例如：異常、#0814*28板"></label>
       </div>
       <div class="modal-actions">
@@ -858,7 +875,8 @@ function openRecordModal(rec){
   addInventoryInputGuard('f-sku', value=>value.replace(/[^A-Za-z0-9-]/g,''));
   addInventoryInputGuard('f-qty', value=>value.replace(/\D/g,''));
   addInventoryInputGuard('f-pallets', value=>value.replace(/\D/g,''));
-  addInventoryInputGuard('f-containerNo', value=>value.replace(/[^A-Za-z0-9]/g,''));
+  addInventoryInputGuard('f-loadContainerNo', value=>value.replace(/[^A-Za-z0-9]/g,''));
+  addInventoryInputGuard('f-unloadContainerNo', value=>value.replace(/[^A-Za-z0-9]/g,''));
   document.getElementById('f-location').addEventListener('input', e=>{
     e.target.classList.remove('input-invalid');
     e.target.removeAttribute('aria-invalid');
@@ -877,7 +895,8 @@ function openRecordModal(rec){
       location: document.getElementById('f-location').value.trim(),
       qty: document.getElementById('f-qty').value,
       pallets: document.getElementById('f-pallets').value,
-      containerNo: document.getElementById('f-containerNo').value.trim(),
+      loadContainerNo: document.getElementById('f-loadContainerNo').value.trim(),
+      unloadContainerNo: document.getElementById('f-unloadContainerNo').value.trim(),
       note: document.getElementById('f-note').value.trim(),
       overtimeWeekdayHours: r.overtimeWeekdayHours||0,
       overtimeHolidayHours: r.overtimeHolidayHours||0,
@@ -889,11 +908,11 @@ function openRecordModal(rec){
     if(isEdit){
       const fields = [
         ['inboundDate','進倉日期'], ['outboundDate','出貨日期'], ['sku','SKU 物料'], ['location','儲位'],
-        ['qty','數量 (組數/PCS)'], ['pallets','棧板數'], ['containerNo','櫃號'], ['note','備註']
+        ['qty','數量 (組數/PCS)'], ['pallets','棧板數'], ['loadContainerNo','裝櫃號'], ['unloadContainerNo','拆櫃號'], ['note','備註']
       ];
       const changes = fields
-        .filter(([field])=>String(r[field]??'') !== String(data[field]??''))
-        .map(([field,label])=>({field,label,before:r[field],after:data[field]}));
+        .filter(([field])=>String(field==='unloadContainerNo' ? getUnloadContainerNo(r) : (r[field]??'')) !== String(data[field]??''))
+        .map(([field,label])=>({field,label,before:field==='unloadContainerNo' ? getUnloadContainerNo(r) : r[field],after:data[field]}));
       if(changes.length===0){ showToast('沒有需要儲存的變更'); return; }
       if(!await confirmInventoryChanges(changes)) return;
       const idx = records.findIndex(x=>x.id===r.id);
@@ -930,7 +949,10 @@ function handleImportFile(file){
             else if(c.includes('QTY')||c.includes('PCS')||c.includes('數量')) colMap.qty=ci;
             else if(c.includes('SKU')||c.includes('物料')) colMap.sku=ci;
             else if(c.includes('儲位')) colMap.location=ci;
-            else if(c.includes('櫃號')) colMap.containerNo=ci;
+            else if(c.includes('裝櫃號')) colMap.loadContainerNo=ci;
+            else if(c.includes('拆櫃號')) colMap.unloadContainerNo=ci;
+            // 舊版報表的「櫃號」視為拆櫃號，以相容既有 Excel。
+            else if(c.includes('櫃號')) colMap.unloadContainerNo=ci;
             else if(c.includes('備註')) colMap.note=ci;
           });
           break;
@@ -957,7 +979,8 @@ function handleImportFile(file){
           location: colMap.location!==undefined ? String(row[colMap.location]||'').trim() : '',
           qty: colMap.qty!==undefined ? row[colMap.qty] : '',
           pallets: colMap.pallets!==undefined ? row[colMap.pallets] : 1,
-          containerNo: colMap.containerNo!==undefined ? String(row[colMap.containerNo]||'').trim() : '',
+          loadContainerNo: colMap.loadContainerNo!==undefined ? String(row[colMap.loadContainerNo]||'').trim() : '',
+          unloadContainerNo: colMap.unloadContainerNo!==undefined ? String(row[colMap.unloadContainerNo]||'').trim() : '',
           note: colMap.note!==undefined ? String(row[colMap.note]||'').trim() : '',
           overtimeWeekdayHours:0, overtimeHolidayHours:0, loadContainer:false, unloadContainer:false, adjustAmount:0
         });
@@ -1007,7 +1030,7 @@ async function exportInventory(){
   // 補償後的欄寬輸出，讓 Excel 視覺寬度與範本一致，並保留 yyyy/mm/dd。
   ws.columns = [
     {width:21.1},{width:20.625},{width:12.5},{width:37.5},
-    {width:37.5},{width:25},{width:18.75},{width:43.125}
+    {width:37.5},{width:25},{width:18.75},{width:25},{width:43.125}
   ];
   // 白色、背景 1、較深 25%：套用至所有資料與表頭框線。
   const thinGray = {style:'thin',color:{argb:'FFBFBFBF'}};
@@ -1022,12 +1045,12 @@ async function exportInventory(){
   ws.getRow(1).height = 70;
   ws.getRow(2).height = 45.25;
   // 第一列維持整列白底；跨欄後不會露出工作表格線。
-  for(let col=1;col<=8;col++){
+  for(let col=1;col<=9;col++){
     const cell = ws.getCell(1,col);
     cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFFFF'}};
     cell.border = {};
   }
-  ws.mergeCells('B1:H1');
+  ws.mergeCells('B1:I1');
   // 以不可見的全形空白保留置中格式，同時讓標題視覺向左微調約 55 像素。
   ws.getCell('B1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}${'\u2002'.repeat(11)}`;
   ws.getCell('B1').font = {name:'Calibri',size:20,bold:true,color:{argb:titleColor}};
@@ -1038,7 +1061,7 @@ async function exportInventory(){
     tl:{col:0.587,row:0.111},
     ext:{width:183.36,height:77.76}
   });
-  const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','櫃號','Outbound\nDate','備註'];
+  const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','裝櫃號','Outbound\nDate','拆櫃號','備註'];
   headers.forEach((label,index)=>{
     const cell = ws.getCell(2,index+1);
     cell.value = label;
@@ -1057,12 +1080,13 @@ async function exportInventory(){
       Number(record.pallets)||0,
       record.sku||'',
       record.location||'',
-      record.containerNo||'',
+      record.loadContainerNo||'',
       record.outboundDate ? (parseExcelDate(record.outboundDate)||null) : null,
+      getUnloadContainerNo(record),
       record.note||''
     ];
     const isShipped = statusOf(record)==='shipped';
-    for(let col=1;col<=8;col++){
+    for(let col=1;col<=9;col++){
       const cell = ws.getCell(rowNumber,col);
       cell.font = {name:'Calibri',size:15,color:{argb:bodyTextColor}};
       cell.alignment = {horizontal:'center',vertical:'middle'};
@@ -1078,7 +1102,7 @@ async function exportInventory(){
     ws.getCell(rowNumber,3).numFmt = '#,##0';
     ws.getCell(rowNumber,7).numFmt = 'yyyy/mm/dd';
   });
-  ws.autoFilter = {from:'A2',to:`H${Math.max(2,rows.length+2)}`};
+  ws.autoFilter = {from:'A2',to:`I${Math.max(2,rows.length+2)}`};
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url = URL.createObjectURL(blob);
@@ -1423,7 +1447,7 @@ function syncInventoryForItem(item){
   }
   const rec = {
     id: uid(), inboundDate: item.batchDate, outboundDate:null, sku:item.sku,
-    location:item.location, qty:item.qty, pallets:item.pallets, containerNo:'', note,
+    location:item.location, qty:item.qty, pallets:item.pallets, loadContainerNo:'', unloadContainerNo:'', note,
     overtimeWeekdayHours:0, overtimeHolidayHours:0, loadContainer:false, unloadContainer:false, adjustAmount:0
   };
   records.push(rec);
@@ -2044,7 +2068,7 @@ function renderBilling(){
     若計算結果與實際合約條款有出入，可在「調整金額」欄手動加減修正。
   </div>
 
-  ${!billingRows ? `<div class="table-wrap"><div class="empty-state"><div class="big">請選擇請款期間</div>選擇起訖日期後點選「產生請款單」，系統會依庫存資料自動試算。</div></div>` : renderBillingTable(billingRows)}
+  ${!billingRows ? `<div class="table-wrap"><div class="empty-state"><div class="big">請選擇請款期間</div>選擇起訖日期後點選「產生請款單」；若不選日期，系統會自動帶入本月帳期（前月 16 日至本月 15 日）。</div></div>` : renderBillingTable(billingRows)}
   `;
 }
 
@@ -2284,9 +2308,16 @@ function attachHandlers(){
     const en = document.getElementById('bp-end');
     const genBtn = document.getElementById('btn-gen-bill');
     if(genBtn) genBtn.onclick = ()=>{
-      billingPeriod.start = document.getElementById('bp-start').value;
-      billingPeriod.end = document.getElementById('bp-end').value;
-      if(!billingPeriod.start||!billingPeriod.end){ showToast('請選擇起訖日期'); return; }
+      const selectedStart = document.getElementById('bp-start').value;
+      const selectedEnd = document.getElementById('bp-end').value;
+      if(!selectedStart && !selectedEnd){
+        billingPeriod = currentBillingPeriod();
+      }else if(!selectedStart || !selectedEnd){
+        showToast('請完整選擇起訖日期');
+        return;
+      }else{
+        billingPeriod = {start:selectedStart, end:selectedEnd};
+      }
       render();
     };
     const exBtn = document.getElementById('btn-export-bill');

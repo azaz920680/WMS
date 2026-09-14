@@ -1030,7 +1030,7 @@ async function exportInventory(){
   // 補償後的欄寬輸出，讓 Excel 視覺寬度與範本一致，並保留 yyyy/mm/dd。
   ws.columns = [
     {width:21.1},{width:20.625},{width:12.5},{width:37.5},
-    {width:37.5},{width:23},{width:18.75},{width:23},{width:43.125}
+    {width:37.5},{width:22},{width:18.75},{width:22},{width:43.125}
   ];
   // 白色、背景 1、較深 25%：套用至所有資料與表頭框線。
   const thinGray = {style:'thin',color:{argb:'FFBFBFBF'}};
@@ -1051,8 +1051,8 @@ async function exportInventory(){
     cell.border = {};
   }
   ws.mergeCells('B1:I1');
-  // 以不可見的全形空白保留置中格式，同時讓標題視覺向左微調約 75 像素。
-  ws.getCell('B1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}${'\u2002'.repeat(15)}`;
+  // 以不可見的全形空白保留置中格式，同時讓標題視覺向左微調約 85 像素。
+  ws.getCell('B1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}${'\u2002'.repeat(17)}`;
   ws.getCell('B1').font = {name:'Calibri',size:20,bold:true,color:{argb:titleColor}};
   ws.getCell('B1').alignment = {horizontal:'center',vertical:'middle'};
   const logoId = workbook.addImage({base64:INVENTORY_EXPORT_LOGO,extension:'png'});

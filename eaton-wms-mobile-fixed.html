@@ -141,8 +141,9 @@ tr.row-shipped:hover td{background:#E7E9EC;}
 .overlay{position:fixed;inset:0;background:rgba(20,28,40,0.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
 .modal{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:560px;max-height:88vh;overflow:auto;}
 .modal h3{margin:0 0 16px;font-size:16px;}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;}
-.form-grid label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-soft);font-weight:500;}
+.form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 14px;align-items:start;}
+.form-grid label{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12.5px;color:var(--ink-soft);font-weight:500;}
+.form-grid input,.form-grid select,.form-grid textarea{width:100%;min-width:0;}
 .form-grid label.full{grid-column:1/-1;}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
 .change-confirm{max-width:680px;}
@@ -676,8 +677,8 @@ function renderInventory(){
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>進倉日期</th><th>SKU 物料</th><th>數量</th><th>棧板數</th><th>儲位</th><th>裝櫃號</th>
-      <th>出貨日期</th><th>拆櫃號</th><th>備註</th><th>狀態</th><th>操作</th>
+      <th>進倉日期</th><th>SKU 物料</th><th>數量</th><th>棧板數</th><th>儲位</th><th>拆櫃號</th>
+      <th>出貨日期</th><th>裝櫃號</th><th>備註</th><th>狀態</th><th>操作</th>
     </tr></thead>
     <tbody>
     ${list.length===0 ? `<tr><td colspan="11"><div class="empty-state"><div class="big">目前沒有符合條件的庫存資料</div>試著調整篩選條件，或點選「新增庫存」建立第一筆資料。</div></td></tr>` :
@@ -693,9 +694,9 @@ function renderInventory(){
           <td class="num">${esc(r.qty)}</td>
           <td class="num">${esc(r.pallets)}</td>
           <td class="mono">${esc(r.location)}</td>
-          <td class="mono">${esc(r.loadContainerNo)}</td>
-          <td class="mono">${esc(r.outboundDate)||'—'}</td>
           <td class="mono">${esc(getUnloadContainerNo(r))}</td>
+          <td class="mono">${esc(r.outboundDate)||'—'}</td>
+          <td class="mono">${esc(r.loadContainerNo)}</td>
           <td>${esc(r.note)}</td>
           <td>${statusBadge}${abnormalBadge}</td>
           <td class="actions-cell">
@@ -859,13 +860,13 @@ function openRecordModal(rec){
       <h3>${isEdit?'編輯庫存資料':'新增庫存資料'}</h3>
       <div class="form-grid">
         <label>進倉日期<input type="date" id="f-inboundDate" value="${esc(r.inboundDate)}"></label>
-        <label>裝櫃號<input type="text" id="f-loadContainerNo" value="${esc(r.loadContainerNo)}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
+        <label>拆櫃號<input type="text" id="f-unloadContainerNo" value="${esc(getUnloadContainerNo(r))}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
         <label>SKU 物料<input type="text" id="f-sku" value="${esc(r.sku)}" pattern="[A-Za-z0-9-]*" title="只能輸入英文字母、數字與 -"></label>
         <label>儲位<input type="text" id="f-location" value="${esc(r.location)}" placeholder="例如 AW00A1、BE12B2"></label>
         <label>數量 (組數/PCS)<input type="text" id="f-qty" value="${esc(r.qty)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
         <label>棧板數<input type="text" id="f-pallets" value="${esc(r.pallets)}" inputmode="numeric" pattern="[0-9]*" title="只能輸入數字"></label>
         <label>出貨日期<input type="date" id="f-outboundDate" value="${esc(r.outboundDate)}"></label>
-        <label>拆櫃號<input type="text" id="f-unloadContainerNo" value="${esc(getUnloadContainerNo(r))}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
+        <label>裝櫃號<input type="text" id="f-loadContainerNo" value="${esc(r.loadContainerNo)}" pattern="[A-Za-z0-9]*" title="只能輸入數字與英文字母"></label>
         <label class="full">備註<input type="text" id="f-note" value="${esc(r.note)}" placeholder="例如：異常、#0814*28板"></label>
       </div>
       <div class="modal-actions">
@@ -1063,7 +1064,7 @@ async function exportInventory(){
     tl:{col:0.587,row:0.111},
     ext:{width:183.36,height:77.76}
   });
-  const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','裝櫃號','Outbound\nDate','拆櫃號','備註'];
+  const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','拆櫃號','Outbound\nDate','裝櫃號','備註'];
   headers.forEach((label,index)=>{
     const cell = ws.getCell(2,index+1);
     cell.value = label;
@@ -1082,9 +1083,9 @@ async function exportInventory(){
       Number(record.pallets)||0,
       record.sku||'',
       record.location||'',
-      record.loadContainerNo||'',
-      record.outboundDate ? (parseExcelDate(record.outboundDate)||null) : null,
       getUnloadContainerNo(record),
+      record.outboundDate ? (parseExcelDate(record.outboundDate)||null) : null,
+      record.loadContainerNo||'',
       record.note||''
     ];
     const isShipped = statusOf(record)==='shipped';

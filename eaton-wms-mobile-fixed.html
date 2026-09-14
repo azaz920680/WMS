@@ -1051,8 +1051,8 @@ async function exportInventory(){
     cell.border = {};
   }
   ws.mergeCells('B1:I1');
-  // 以不可見的全形空白保留置中格式，同時讓標題視覺向左微調約 115 像素。
-  ws.getCell('B1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}${'\u2002'.repeat(23)}`;
+  // 以不可見的全形空白保留置中格式，同時讓標題視覺向左微調約 110 像素。
+  ws.getCell('B1').value = `EATON 蘆竹 UPS Inventory Report       ${reportMonth}${'\u2002'.repeat(22)}`;
   ws.getCell('B1').font = {name:'Calibri',size:20,bold:true,color:{argb:titleColor}};
   ws.getCell('B1').alignment = {horizontal:'center',vertical:'middle'};
   const logoId = workbook.addImage({base64:INVENTORY_EXPORT_LOGO,extension:'png'});

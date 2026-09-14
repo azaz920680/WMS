@@ -679,8 +679,8 @@ function renderInventory(){
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>進倉日期</th><th>SKU 物料</th><th>數量</th><th>棧板數</th><th>儲位</th><th>拆櫃號</th>
-      <th>出貨日期</th><th>裝櫃號</th><th>備註</th><th>狀態</th><th>操作</th>
+      <th>進倉日期</th><th>SKU 物料</th><th>數量</th><th>棧板數</th><th>儲位</th><th>裝櫃號</th>
+      <th>出貨日期</th><th>拆櫃號</th><th>備註</th><th>狀態</th><th>操作</th>
     </tr></thead>
     <tbody>
     ${list.length===0 ? `<tr><td colspan="11"><div class="empty-state"><div class="big">目前沒有符合條件的庫存資料</div>試著調整篩選條件，或點選「新增庫存」建立第一筆資料。</div></td></tr>` :
@@ -696,9 +696,9 @@ function renderInventory(){
           <td class="num">${esc(r.qty)}</td>
           <td class="num">${esc(r.pallets)}</td>
           <td class="mono">${esc(r.location)}</td>
-          <td class="mono">${esc(getUnloadContainerNo(r))}</td>
-          <td class="mono">${esc(r.outboundDate)||'—'}</td>
           <td class="mono">${esc(r.loadContainerNo)}</td>
+          <td class="mono">${esc(r.outboundDate)||'—'}</td>
+          <td class="mono">${esc(getUnloadContainerNo(r))}</td>
           <td>${esc(r.note)}</td>
           <td>${statusBadge}${abnormalBadge}</td>
           <td class="actions-cell">
@@ -1066,7 +1066,7 @@ async function exportInventory(){
     tl:{col:0.587,row:0.111},
     ext:{width:183.36,height:77.76}
   });
-  const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','拆櫃號','Outbound\nDate','裝櫃號','備註'];
+  const headers = ['Inbound\nDate','QTY (Groups)\nPCS','Pallet\n棧板數','SKU 物料','儲位','裝櫃號','Outbound\nDate','拆櫃號','備註'];
   headers.forEach((label,index)=>{
     const cell = ws.getCell(2,index+1);
     cell.value = label;
@@ -1085,9 +1085,9 @@ async function exportInventory(){
       Number(record.pallets)||0,
       record.sku||'',
       record.location||'',
-      getUnloadContainerNo(record),
-      record.outboundDate ? (parseExcelDate(record.outboundDate)||null) : null,
       record.loadContainerNo||'',
+      record.outboundDate ? (parseExcelDate(record.outboundDate)||null) : null,
+      getUnloadContainerNo(record),
       record.note||''
     ];
     const isShipped = statusOf(record)==='shipped';
